@@ -16,6 +16,8 @@ struct SettingsView: View {
     @State private var model = "deepseek-chat"
     @State private var deepSeekKeyInput = ""
     @State private var deepSeekKeyMessage = ""
+    @State private var ollamaStatus: OllamaStatus = .unknown
+    @State private var checkingOllama = false
     @State private var confirmingClear = false
     @State private var reindexing = false
     @State private var watchedRoots: [URL] = []
@@ -58,8 +60,23 @@ struct SettingsView: View {
                     .onChange(of: model) { _, v in services.settings.model = v }
                     Divider().overlay(DS.ColorToken.borderSubtle)
                     Text("Multimodal").font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
-                    StatusDot(ok: services.multimodalAvailable,
-                              label: "Gemma 3 12B · \(services.config.ollamaVisionModel) (local)")
+                    HStack(spacing: DS.Space.x3) {
+                        StatusDot(ok: ollamaStatus.isReady,
+                                  label: ollamaStatus.label(model: services.config.ollamaVisionModel))
+                        Spacer()
+                        DSButton(checkingOllama ? "Checking…" : "Check again",
+                                 icon: "arrow.clockwise", kind: .ghost) {
+                            Task { await refreshOllamaStatus() }
+                        }
+                        .disabled(checkingOllama)
+                    }
+                    Text(ollamaStatus.detail(model: services.config.ollamaVisionModel,
+                                             baseURL: services.config.ollamaBaseURL))
+                        .font(DS.Typo.caption)
+                        .foregroundStyle(ollamaStatus.isReady ? DS.ColorToken.textTertiary : DS.ColorToken.danger)
+                    if !ollamaStatus.isReady {
+                        ollamaSetupCallout
+                    }
                     Divider().overlay(DS.ColorToken.borderSubtle)
                     Text("Embeddings").font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                     StatusDot(ok: services.embedder.isAvailable,
@@ -209,6 +226,8 @@ struct SettingsView: View {
         .task {
             itemCount = (try? await services.store.itemCount()) ?? 0
             chunkCount = (try? await services.store.chunkCount()) ?? 0
+            ollamaStatus = services.ollamaStatus
+            await refreshOllamaStatus()
         }
         .onAppear {
             topK = services.settings.topK
@@ -221,8 +240,32 @@ struct SettingsView: View {
             model = services.settings.model
             keywordWeight = services.settings.keywordWeight
             deepSeekKeyInput = services.settings.deepSeekKey
+            ollamaStatus = services.ollamaStatus
             watchedRoots = services.roots.roots
         }
+    }
+
+    private var ollamaSetupCallout: some View {
+        VStack(alignment: .leading, spacing: DS.Space.x2) {
+            Text("Required local model setup").font(DS.Typo.caption)
+                .foregroundStyle(DS.ColorToken.textTertiary)
+            Text("ollama pull \(services.config.ollamaVisionModel)\nollama serve")
+                .font(DS.Typo.mono)
+                .foregroundStyle(DS.ColorToken.textPrimary)
+                .textSelection(.enabled)
+                .padding(DS.Space.x3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(DS.ColorToken.canvasRaised,
+                            in: RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                    .strokeBorder(DS.ColorToken.borderSubtle, lineWidth: 1))
+        }
+    }
+
+    private func refreshOllamaStatus() async {
+        checkingOllama = true
+        ollamaStatus = await services.refreshOllamaStatus()
+        checkingOllama = false
     }
 
     private func saveDeepSeekKey() {

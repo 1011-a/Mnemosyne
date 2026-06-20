@@ -6,6 +6,7 @@ struct IngestView: View {
     let services: Services
     @Bindable var progress: IngestProgress
     @State private var dropTargeted = false
+    @State private var ollamaStatus: OllamaStatus = .unknown
 
     var body: some View {
         ScrollView {
@@ -39,6 +40,13 @@ struct IngestView: View {
                                  action: chooseBookmarks)
                             .accessibilityIdentifier("ingest.importBookmarks")
                         engineStatusDot
+                    }
+                    if services.settings.visionEngine == .gemma, !ollamaStatus.isReady {
+                        Text(ollamaStatus.detail(model: services.config.ollamaVisionModel,
+                                                 baseURL: services.config.ollamaBaseURL))
+                            .font(DS.Typo.caption)
+                            .foregroundStyle(DS.ColorToken.danger)
+                            .textSelection(.enabled)
                     }
                 }
                 .padding(DS.Space.x6)
@@ -78,7 +86,10 @@ struct IngestView: View {
         } isTargeted: { dropTargeted = $0 }
         // Keep the persisted "in knowledge base" count fresh: on open, and each
         // time a run completes (so it climbs as files finish indexing).
-        .task { await services.refreshLibraryCount() }
+        .task {
+            await services.refreshLibraryCount()
+            ollamaStatus = await services.refreshOllamaStatus()
+        }
         .onChange(of: progress.phase) { _, phase in
             if phase == .done { Task { await services.refreshLibraryCount() } }
         }
@@ -100,11 +111,8 @@ struct IngestView: View {
                 StatusDot(ok: false, label: "Codex CLI not found — text only")
             }
         case .gemma:
-            if services.multimodalAvailable {
-                StatusDot(ok: true, label: "Gemma 12B ready for images & PDFs")
-            } else {
-                StatusDot(ok: false, label: "Gemma offline — text only")
-            }
+            StatusDot(ok: ollamaStatus.isReady,
+                      label: ollamaStatus.label(model: services.config.ollamaVisionModel))
         }
     }
 

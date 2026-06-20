@@ -16,8 +16,9 @@ final class Services {
     let settings: SettingsStore
     let progress = IngestProgress()
 
-    /// Whether the local Gemma multimodal model answered at boot.
+    /// Whether local Ollama answered and has the configured Gemma model.
     private(set) var multimodalAvailable = false
+    private(set) var ollamaStatus: OllamaStatus = .unknown
     /// Live FSEvents watching state (surfaced in Settings).
     private(set) var isWatching = false
     private(set) var watchedCount = 0
@@ -87,10 +88,15 @@ final class Services {
                       store: store, settings: settings)
     }
 
-    /// Probe local Ollama; rebuild the ingestor's extractor to match reality.
+    /// Probe local Ollama; multimodal Gemma ingest requires both the server and model.
     func probe() async {
-        let reachable = await ollama.isReachable()
-        multimodalAvailable = reachable
+        ollamaStatus = await ollama.status()
+        multimodalAvailable = ollamaStatus.isReady
+    }
+
+    func refreshOllamaStatus() async -> OllamaStatus {
+        await probe()
+        return ollamaStatus
     }
 
     /// Refresh the persisted "items in your knowledge base" figure shown on the

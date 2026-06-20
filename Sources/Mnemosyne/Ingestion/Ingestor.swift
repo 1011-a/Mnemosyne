@@ -19,8 +19,13 @@ actor Ingestor {
         self.ollama = ollama; self.settings = settings
     }
 
-    private func currentExtractor() -> ContentExtractor {
-        ContentExtractor(ollama: ollama, multimodal: settings.multimodal, visionEngine: settings.visionEngine)
+    private func currentExtractor() async -> ContentExtractor {
+        let engine = settings.visionEngine
+        var multimodal = settings.multimodal
+        if multimodal, engine == .gemma {
+            multimodal = await ollama.status().isReady
+        }
+        return ContentExtractor(ollama: ollama, multimodal: multimodal, visionEngine: engine)
     }
 
     /// Human-readable label for the (often slow) extraction step, shown live so a
@@ -50,7 +55,7 @@ actor Ingestor {
     func reingest(path: String, progress: IngestProgress) async {
         let url = URL(fileURLWithPath: path)
         await MainActor.run { progress.beginJob(total: 1) }
-        let extractor = currentExtractor()
+        let extractor = await currentExtractor()
         IngestDebugLog.write("reingest begin total=1 engine=\(extractor.visionEngine.rawValue) multimodal=\(extractor.multimodal) file=\(url.lastPathComponent)")
         do {
             try await ingestOne(url, title: url.lastPathComponent, progress: progress,
@@ -79,13 +84,14 @@ actor Ingestor {
     /// Ingest an explicit list of files.
     func ingest(urls: [URL], progress: IngestProgress) async {
         await MainActor.run { progress.beginJob(total: urls.count) }
-        let engineAtStart = settings.visionEngine
+        let extractor = await currentExtractor()
+        let engineAtStart = extractor.visionEngine
         let lanes = engineAtStart.usesExternalCLI ? Self.externalCliLanes : 1
-        IngestDebugLog.write("ingest begin total=\(urls.count) engineAtStart=\(engineAtStart.rawValue) multimodal=\(settings.multimodal) lanes=\(lanes)")
+        IngestDebugLog.write("ingest begin total=\(urls.count) engineAtStart=\(engineAtStart.rawValue) multimodal=\(extractor.multimodal) lanes=\(lanes)")
         if lanes <= 1 {
             for url in urls {
                 if Task.isCancelled { break }
-                await ingestOneSafe(url, progress: progress)
+                await ingestOneSafe(url, progress: progress, extractor: extractor)
             }
         } else {
             // Bounded-concurrency worker pool: keep `lanes` files in flight, refilling
@@ -94,12 +100,12 @@ actor Ingestor {
             await withTaskGroup(of: Void.self) { group in
                 for _ in 0..<lanes {
                     guard let u = iter.next() else { break }
-                    group.addTask { await self.ingestOneSafe(u, progress: progress) }
+                    group.addTask { await self.ingestOneSafe(u, progress: progress, extractor: extractor) }
                 }
                 while await group.next() != nil {
                     if Task.isCancelled { break }
                     guard let u = iter.next() else { continue }
-                    group.addTask { await self.ingestOneSafe(u, progress: progress) }
+                    group.addTask { await self.ingestOneSafe(u, progress: progress, extractor: extractor) }
                 }
             }
         }
@@ -108,9 +114,8 @@ actor Ingestor {
     }
 
     /// One file, never throwing — a failure counts as processed so the run continues.
-    private func ingestOneSafe(_ url: URL, progress: IngestProgress) async {
+    private func ingestOneSafe(_ url: URL, progress: IngestProgress, extractor: ContentExtractor) async {
         let title = url.lastPathComponent
-        let extractor = currentExtractor()
         do {
             try await ingestOne(url, title: title, progress: progress, extractor: extractor)
         } catch {

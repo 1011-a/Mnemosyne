@@ -11,7 +11,7 @@ import ImageIO
 /// - everything else textual: decoded directly.
 struct ContentExtractor: Sendable {
     let ollama: OllamaClient
-    /// When false (Gemma unreachable), skip multimodal steps and degrade gracefully.
+    /// When false (Gemma unreachable or missing), skip multimodal steps and degrade gracefully.
     let multimodal: Bool
     /// Which engine handles image / scanned-PDF understanding.
     var visionEngine: VisionEngine = .gemma

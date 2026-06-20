@@ -29,6 +29,8 @@ ollama pull gemma3:12b
 ollama serve
 ```
 
+Gemma model weights are not bundled in Mnemosyne or the GitHub release binary. Keeping them external keeps the app small and makes model licensing, updates, and user consent explicit.
+
 ```bash
 swift test
 ./scripts/make-app.sh
