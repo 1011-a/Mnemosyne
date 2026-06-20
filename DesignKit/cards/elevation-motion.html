@@ -1,0 +1,34 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  body{margin:0;background:#0A0B0F;color:#F2F4F8;padding:28px;font-family:-apple-system,'SF Pro Display',system-ui,sans-serif}
+  h1{font-size:22px;font-weight:700;margin:0 0 4px}
+  .sub{color:#6B7385;font-size:13px;margin:0 0 24px}
+  .grp{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6B7385;margin:24px 0 12px}
+  .row{display:flex;gap:24px;flex-wrap:wrap}
+  .card{width:150px;height:96px;border-radius:14px;background:#1A1D26;border:1px solid rgba(255,255,255,.10);display:flex;align-items:flex-end;padding:10px}
+  .card span{font-family:'SF Mono',monospace;font-size:11px;color:#6B7385}
+  .e1{box-shadow:0 2px 8px rgba(0,0,0,.25)}
+  .e2{box-shadow:0 8px 18px rgba(0,0,0,.35)}
+  .e3{box-shadow:0 18px 36px rgba(0,0,0,.45)}
+  .glow{box-shadow:0 0 24px rgba(110,86,247,.45);border-color:rgba(110,86,247,.4)}
+  .mrow{display:flex;align-items:center;gap:12px;margin:8px 0;font-family:'SF Mono',monospace;font-size:12px;color:#A9B1C0}
+  .tok{color:#22D3EE;width:80px;display:inline-block}
+</style></head><body>
+  <h1>Elevation &amp; motion</h1>
+  <p class="sub">Depth via shadow + translucency. Generative surfaces add an accent glow.</p>
+
+  <div class="grp">Elevation</div>
+  <div class="row">
+    <div class="card e1"><span>e1 · cards</span></div>
+    <div class="card e2"><span>e2 · panels</span></div>
+    <div class="card e3"><span>e3 · popovers</span></div>
+    <div class="card glow"><span>glow · AI</span></div>
+  </div>
+
+  <div class="grp">Motion tokens</div>
+  <div class="mrow"><span class="tok">snappy</span> spring(response 0.30, damping 0.82) — taps, hovers</div>
+  <div class="mrow"><span class="tok">smooth</span> spring(response 0.45, damping 0.85) — layout, navigation</div>
+  <div class="mrow"><span class="tok">bounce</span> spring(response 0.50, damping 0.62) — orb, celebratory</div>
+  <div class="mrow"><span class="tok">fast</span> 120ms easeOut — micro feedback</div>
+  <div class="mrow"><span class="tok">base</span> 220ms easeInOut — fades, reveals</div>
+</body></html>

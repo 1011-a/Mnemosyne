@@ -1,0 +1,59 @@
+{
+  "ok": true,
+  "format": "WEBP",
+  "mode": "RGBA",
+  "width": 1536,
+  "height": 1872,
+  "transparent_rgb_residue_pixels": 0,
+  "errors": [],
+  "warnings": [],
+  "used_cells": 57,
+  "total_cells": 72,
+  "rows": [
+    {
+      "row": 0,
+      "state": "idle",
+      "frames": 6
+    },
+    {
+      "row": 1,
+      "state": "running-right",
+      "frames": 8
+    },
+    {
+      "row": 2,
+      "state": "running-left",
+      "frames": 8
+    },
+    {
+      "row": 3,
+      "state": "waving",
+      "frames": 4
+    },
+    {
+      "row": 4,
+      "state": "jumping",
+      "frames": 5
+    },
+    {
+      "row": 5,
+      "state": "failed",
+      "frames": 8
+    },
+    {
+      "row": 6,
+      "state": "waiting",
+      "frames": 6
+    },
+    {
+      "row": 7,
+      "state": "running",
+      "frames": 6
+    },
+    {
+      "row": 8,
+      "state": "review",
+      "frames": 6
+    }
+  ]
+}

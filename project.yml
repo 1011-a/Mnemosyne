@@ -1,0 +1,60 @@
+name: Mnemosyne
+options:
+  bundleIdPrefix: com.mnemosyne
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Ad-hoc sign ("-") so the app and the XCUITest runner launch locally without
+    # a developer team. Leaving them unsigned makes Gatekeeper reject the runner
+    # as "damaged".
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: "NO"
+
+targets:
+  # The real macOS app, built from the same sources the SwiftPM executable uses.
+  Mnemosyne:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Mnemosyne
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mnemosyne.app
+        PRODUCT_NAME: Mnemosyne
+        GENERATE_INFOPLIST_FILE: "YES"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_KEY_CFBundleDisplayName: Mnemosyne
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        SWIFT_VERSION: "6.0"
+
+  # The XCUITest bundle that launches the app and taps real controls.
+  MnemosyneUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Mnemosyne
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mnemosyne.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: Mnemosyne
+        SWIFT_VERSION: "6.0"
+
+schemes:
+  Mnemosyne:
+    build:
+      targets:
+        Mnemosyne: all
+        MnemosyneUITests: [test]
+    test:
+      targets:
+        - MnemosyneUITests

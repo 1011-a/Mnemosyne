@@ -1,0 +1,54 @@
+<!-- @dsCard group="Components" -->
+<!doctype html><html><head><meta charset="utf-8"><style>
+  body{margin:0;background:#0A0B0F;color:#F2F4F8;padding:28px;font-family:-apple-system,'SF Pro Display',system-ui,sans-serif}
+  h1{font-size:22px;font-weight:700;margin:0 0 4px}
+  .sub{color:#6B7385;font-size:13px;margin:0 0 24px}
+  .grp{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6B7385;margin:24px 0 12px}
+  .cards{display:flex;gap:16px;flex-wrap:wrap}
+  .stat{width:150px;background:#1A1D26;border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:20px;box-shadow:0 8px 18px rgba(0,0,0,.35)}
+  .stat .ic{color:#6E56F7;font-size:16px}
+  .stat .val{font-size:28px;font-weight:700;margin:8px 0 2px}
+  .stat .lab{font-size:12px;color:#6B7385}
+  .panel{background:#1A1D26;border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:20px;max-width:520px;margin-top:8px}
+  .bar{display:flex;align-items:center;gap:12px;margin:10px 0}
+  .bar .name{width:110px;font-size:14px;color:#A9B1C0}
+  .bar .track{flex:1;height:10px;border-radius:999px;background:#22262F;overflow:hidden}
+  .bar .fill{height:100%;border-radius:999px;background:linear-gradient(135deg,#6E56F7,#22D3EE)}
+  .bar .n{width:40px;text-align:right;font-size:12px;color:#6B7385}
+</style></head><body>
+  <h1>Insights dashboard</h1>
+  <p class="sub">StatCard tiles and StatBar breakdown — the knowledge base at a glance.</p>
+
+  <div class="grp">StatCard</div>
+  <div class="cards">
+    <div class="stat"><div class="ic">▤</div><div class="val">1,284</div><div class="lab">Items</div></div>
+    <div class="stat"><div class="ic">▥</div><div class="val">9,471</div><div class="lab">Chunks</div></div>
+    <div class="stat"><div class="ic">▦</div><div class="val">2.4 GB</div><div class="lab">Indexed</div></div>
+    <div class="stat"><div class="ic">◌</div><div class="val">38</div><div class="lab">Chats</div></div>
+  </div>
+
+  <div class="grp">Sparkline · activity (last 30 days)</div>
+  <div class="panel" style="display:flex;align-items:flex-end;gap:2px;height:64px;padding:16px">
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:14%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:8%;opacity:.18"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:40%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:65%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:30%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:8%;opacity:.18"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:90%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:55%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:100%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:22%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:48%"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#6E56F7,#22D3EE);border-radius:99px;height:70%"></div>
+  </div>
+
+  <div class="grp">StatBar · by type</div>
+  <div class="panel">
+    <div class="bar"><span class="name">pdf</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="n">512</span></div>
+    <div class="bar"><span class="name">image</span><span class="track"><span class="fill" style="width:64%"></span></span><span class="n">328</span></div>
+    <div class="bar"><span class="name">markdown</span><span class="track"><span class="fill" style="width:41%"></span></span><span class="n">210</span></div>
+    <div class="bar"><span class="name">code</span><span class="track"><span class="fill" style="width:23%"></span></span><span class="n">118</span></div>
+    <div class="bar"><span class="name">audioTranscript</span><span class="track"><span class="fill" style="width:11%"></span></span><span class="n">58</span></div>
+  </div>
+</body></html>
