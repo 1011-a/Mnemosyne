@@ -14,13 +14,20 @@ Mnemosyne is a macOS personal-knowledge app. It ingests local files into a searc
 ## Requirements
 
 - macOS 14 or newer.
+- Ollama with `gemma3:12b` for local multimodal ingest.
+- DeepSeek API key for chat/agent answers.
 - Swift 6 toolchain / recent Xcode.
 - Optional: [XcodeGen](https://github.com/yonaskolb/XcodeGen) for regenerating the UI-test Xcode project.
-- Optional: Ollama with `gemma3:12b` for local multimodal ingest.
-- Optional: DeepSeek API key for chat/agent answers.
 - Optional: authenticated `claude` or `codex` CLI for external multimodal ingest.
 
 ## Quick Start
+
+Prepare the required local vision model:
+
+```bash
+ollama pull gemma3:12b
+ollama serve
+```
 
 ```bash
 swift test
@@ -28,7 +35,7 @@ swift test
 open build/Mnemosyne.app
 ```
 
-Then open Settings and add a DeepSeek API key. The key is stored in macOS Keychain.
+Then open Settings and add a DeepSeek API key. Mnemosyne requires this key for chat and agent answers. The key is stored in macOS Keychain.
 
 For development overrides, copy `.env.example` to `.env` and launch with:
 
