@@ -189,6 +189,7 @@ struct ToolAgent: Sendable {
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
     • inspect_json(item) — describe a JSON file's shape: keys, value types, array lengths, nesting.
     • json_value(item, path) — extract a value by path (address.city, items[0].id, [2]).
+    • json_to_table(item) — render a JSON array-of-objects (or object) as an aligned markdown table.
     • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
     • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
     • quick_summary(item) — instant extractive summary (top sentences, no AI model, offline).
@@ -303,6 +304,8 @@ struct ToolAgent: Sendable {
             tool("json_value", "Extract the value at a path from a JSON file — dot/bracket syntax like 'address.city', 'items[0].id', or '[2]'. Scalars are returned literally; objects/arrays as compact JSON. Call inspect_json first to see the structure.",
                  ["item": item, "path": ["type": "string", "description": "A dot/bracket path, e.g. 'user.name' or 'results[0].score'."]],
                  required: ["item", "path"]),
+            tool("json_to_table", "Render a JSON file as an aligned MARKDOWN table — best for an array of objects (a column per key), also handles a single object (key/value) or an array of scalars. Use when the user wants to SEE a JSON export.",
+                 ["item": item], required: ["item"]),
             tool("text_stats", "Readability + length metrics for a file — word/sentence counts, estimated reading time, and a Flesch Reading Ease score with a plain-language band. Use to answer 'how long is this?' or 'how hard is it to read?'.",
                  ["item": item], required: ["item"]),
             tool("task_progress", "Measure a markdown CHECKLIST's completion in a file — counts done vs pending boxes ([x] vs [ ]) and a percent-complete. Unlike extract_action_items (only open TODOs), this reports the whole list including finished items.",
@@ -1719,6 +1722,23 @@ struct ToolAgent: Sendable {
                 return ("Couldn't render '\(it.title)' as a table.", [])
             }
             let note = rows.count > maxRows + 1 ? "\n…(\(rows.count - 1 - maxRows) more rows)" : ""
+            return ("\(it.title):\n\(table)\(note)", [])
+
+        case "json_to_table":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Rendering \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let jsonRows = JSONTable.rows(from: text) else {
+                return ("'\(it.title)' isn't JSON that can be tabulated (need an array of objects, an object, or an array).", [])
+            }
+            let maxRows = 30
+            let clamped = Array(jsonRows.prefix(maxRows + 1))
+            guard let table = MarkdownTable.tableFrom(clamped) else {
+                return ("Couldn't render '\(it.title)' as a table.", [])
+            }
+            let note = jsonRows.count > maxRows + 1 ? "\n…(\(jsonRows.count - 1 - maxRows) more rows)" : ""
             return ("\(it.title):\n\(table)\(note)", [])
 
         case "csv_column_stats":
