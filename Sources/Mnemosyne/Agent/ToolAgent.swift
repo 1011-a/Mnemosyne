@@ -184,6 +184,7 @@ struct ToolAgent: Sendable {
     • document_outline(item) — the file's exact markdown heading table-of-contents, instant + free.
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
+    • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -270,6 +271,9 @@ struct ToolAgent: Sendable {
                  ["item": item], required: ["item"]),
             tool("inspect_csv", "Parse a CSV or TSV file (spreadsheet/export) into columns and rows — auto-detects the delimiter, handles quoted fields with embedded commas/newlines. Reports the column names, row count, and sample rows.",
                  ["item": item], required: ["item"]),
+            tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
+                 ["item": item, "column": ["type": "string", "description": "The exact column header to analyze (case-insensitive)."]],
+                 required: ["item", "column"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("sentiment", "Gauge the emotional TONE of a file (how positive/negative) — useful for reviews, feedback, or journal entries. Returns a label and a −1…+1 score. On-device, offline.",
@@ -1635,6 +1639,21 @@ struct ToolAgent: Sendable {
                 return ("'\(it.title)' doesn't parse as CSV/TSV (no rows found).", [])
             }
             return ("'\(it.title)':\n\(summary)", [])
+
+        case "csv_column_stats":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            guard let column = arg("column"), !column.isEmpty else { return ("Missing 'column'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Analyzing \(column) in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            guard let header = rows.first else { return ("'\(it.title)' has no rows to analyze.", []) }
+            guard let report = ColumnAnalyzer.report(headers: header, rows: Array(rows.dropFirst()), column: column) else {
+                return ("Column '\(column)' not found in '\(it.title)'. Columns: \(header.joined(separator: ", ")).", [])
+            }
+            return ("\(it.title) — \(report)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
