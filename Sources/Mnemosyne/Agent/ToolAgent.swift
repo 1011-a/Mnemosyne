@@ -202,6 +202,7 @@ struct ToolAgent: Sendable {
     • make_table(data) — format rows into an aligned markdown table (first row = header).
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
     • sparkline(data) — compact one-line trend (▁▂▃▄▅▆▇█) from a number series.
+    • tally(data) — count occurrences of each distinct value in a list (GROUP BY).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -330,6 +331,9 @@ struct ToolAgent: Sendable {
                  required: ["data"]),
             tool("sparkline", "Render a compact one-line trend (▁▂▃▄▅▆▇█) from a number series — a glanceable inline trend (e.g. activity over time). Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines, e.g. '3 5 4 8 6 9'."]],
+                 required: ["data"]),
+            tool("tally", "Count how often each distinct value appears in a list (a GROUP BY) — statuses, tags, names. Pass values one per line (or comma-separated). Returns a frequency table; pair with bar_chart to visualize it.",
+                 ["data": ["type": "string", "description": "Values one per line or comma-separated, e.g. 'open\\nopen\\nclosed'."]],
                  required: ["data"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1900,6 +1904,13 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse any numbers from the data. Pass values separated by commas or spaces.", [])
             }
             return (spark, [])
+
+        case "tally":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of values).", []) }
+            guard let summary = Tally.summary(data) else {
+                return ("Couldn't find any values to tally. Pass values one per line or comma-separated.", [])
+            }
+            return (summary, [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
