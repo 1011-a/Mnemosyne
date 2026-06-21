@@ -219,6 +219,7 @@ struct ToolAgent: Sendable {
     • sort_lines(text, …) — sort lines (alpha/numeric, reverse, unique).
     • compare_lists(a, b, mode) — set ops on two lists (common/only_a/only_b/union).
     • strip_markdown(text) — remove markdown formatting to get plain prose.
+    • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -417,6 +418,9 @@ struct ToolAgent: Sendable {
             tool("strip_markdown", "Strip markdown formatting from text to get plain prose — removes headings, bold/italic, links, images, inline code, bullets, and quotes. Use to get a clean text version.",
                  ["text": ["type": "string", "description": "The markdown text to strip."]],
                  required: ["text"]),
+            tool("number_bases", "Show an integer in decimal, hex, binary, and octal. Input may be decimal or prefixed (0x.., 0b.., 0o..). E.g. '255' or '0xff'.",
+                 ["value": ["type": "string", "description": "The integer, decimal or 0x/0b/0o-prefixed."]],
+                 required: ["value"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2197,6 +2201,13 @@ struct ToolAgent: Sendable {
             guard !blocks.isEmpty else { return ("No valid JSON found in the text.", []) }
             let body = blocks.map { "```json\n\($0)\n```" }.joined(separator: "\n\n")
             return ("Found \(blocks.count) JSON block(s):\n\(body)", [])
+
+        case "number_bases":
+            guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
+            guard let described = NumberBases.describe(value) else {
+                return ("'\(value)' isn't a valid integer (try decimal or 0x/0b/0o-prefixed).", [])
+            }
+            return (described, [])
 
         case "format_json":
             guard let json = arg("json"), !json.isEmpty else { return ("Missing 'json'.", []) }
