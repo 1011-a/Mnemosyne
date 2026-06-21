@@ -165,6 +165,7 @@ struct ToolAgent: Sendable {
     • detect_language(item) — identify what language a file is written in (on-device); use before translate.
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
     • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
+    • library_languages — break the whole library down by language (e.g. English vs Chinese share).
     Work in three phases — PLAN, ACT, then answer:
     1. PLAN: decide if the request is a QUESTION (needs evidence) or an ACTION (manage the KB), and \
        which tool(s) it needs.
@@ -239,6 +240,8 @@ struct ToolAgent: Sendable {
             tool("library_health", "A one-call HEALTH CHECK — label coverage, untagged count, near-duplicate labels — with concrete cleanup recommendations (auto_label_untagged, merge_tags). Use for 'how organized is my library / what should I clean up'.", [:]),
             tool("find_duplicates", "Find sets of files with IDENTICAL content (exact duplicates) — useful before deleting redundant items.", [:]),
             tool("library_themes", "Surface the DOMINANT TOPICS across the whole library (terms appearing in many files) — for 'what are the main themes in my knowledge' or to suggest what to explore.", [:]),
+            tool("library_languages", "Break down the WHOLE library by LANGUAGE — what share of files are English vs Chinese vs … — for a multilingual collection. On-device detection.",
+                 ["limit": ["type": "integer", "description": "Max files to sample (default 300)."]]),
             tool("find_by_kind", "List files of a given KIND/type — pdf, image, markdown, text, code, webpage, email, word.",
                  ["kind": ["type": "string", "description": "e.g. 'pdf', 'image', 'markdown'."]], required: ["kind"]),
             tool("add_tag", "Add a label to a file.", ["item": item, "tag": tag], required: ["item", "tag"]),
@@ -769,6 +772,17 @@ struct ToolAgent: Sendable {
         }.sorted { when($0) > when($1) }
     }
 
+    /// Aggregate per-item language codes into a distribution sorted by count (desc),
+    /// ties broken by code (asc). Empty codes are ignored. Pure → unit-testable; backs
+    /// the `library_languages` tool.
+    static func languageDistribution(_ codes: [String]) -> [(language: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for c in codes where !c.isEmpty { counts[c, default: 0] += 1 }
+        return counts
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .map { (language: $0.key, count: $0.value) }
+    }
+
     /// Format a date as a YYYY-MM-DD day string (for change listings).
     static func isoDay(_ d: Date) -> String {
         let f = DateFormatter()
@@ -1033,6 +1047,26 @@ struct ToolAgent: Sendable {
             let matched = ((try? await store.allItems()) ?? []).filter { $0.kind == kind }
             return matched.isEmpty ? ("No \(kind.rawValue) files in the library.", [])
                 : ("\(matched.count) \(kind.rawValue) file(s): " + matched.prefix(40).map(\.title).joined(separator: "; "), [])
+
+        case "library_languages":
+            onStatus("Detecting languages across the library…")
+            let cap = Swift.min(Swift.max(Int(arg("limit") ?? "") ?? 300, 1), 1000)
+            let items = ((try? await store.allItems()) ?? []).prefix(cap)
+            guard !items.isEmpty else { return ("The knowledge base is empty.", []) }
+            var codes: [String] = []
+            for it in items {
+                // Sample the first chunk's text — enough signal for language ID, cheap.
+                let sample = ((try? await store.chunkTexts(forItem: it.id)) ?? []).first ?? ""
+                if let r = LanguageDetector.detect(sample) { codes.append(r.dominant) }
+            }
+            let dist = Self.languageDistribution(codes)
+            guard !dist.isEmpty else { return ("Couldn't detect languages (too little text in \(items.count) sampled file(s)).", []) }
+            let total = dist.reduce(0) { $0 + $1.count }
+            let parts = dist.map { d -> String in
+                let pct = Int((Double(d.count) / Double(total) * 100).rounded())
+                return "\(LanguageDetector.name(for: d.language)) \(d.count) (\(pct)%)"
+            }
+            return ("Languages across \(total) sampled file(s): " + parts.joined(separator: ", "), [])
 
         case "library_stats":
             onStatus("Counting the knowledge base…")

@@ -439,6 +439,16 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testLanguageDistributionSortsByCountThenCode() {
+        let codes = ["en", "zh-Hans", "en", "fr", "en", "zh-Hans", "", "fr"]
+        let dist = ToolAgent.languageDistribution(codes)
+        XCTAssertEqual(dist.map(\.language), ["en", "fr", "zh-Hans"], "by count desc; fr & zh tie at 2 → code asc")
+        XCTAssertEqual(dist.map(\.count), [3, 2, 2])
+        XCTAssertEqual(dist.reduce(0) { $0 + $1.count }, 7, "empty codes are ignored")
+        XCTAssertTrue(ToolAgent.languageDistribution([]).isEmpty)
+        XCTAssertTrue(ToolAgent.languageDistribution(["", "  ".trimmingCharacters(in: .whitespaces)]).isEmpty)
+    }
+
     func testParseISODateRejectsGarbage() {
         XCTAssertNotNil(ToolAgent.parseISODate("2026-01-15"))
         XCTAssertNil(ToolAgent.parseISODate("15/01/2026"))
