@@ -160,6 +160,7 @@ struct ToolAgent: Sendable {
     • summarize_item / outline_item / keyword_extract — condense, outline, or fingerprint a large file.
     • extract_action_items(item) — pull TODOs/tasks/commitments out of a note; proactively offer to add_reminder for each.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
+    • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
     • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
     Work in three phases — PLAN, ACT, then answer:
@@ -213,6 +214,8 @@ struct ToolAgent: Sendable {
             tool("extract_action_items", "Pull actionable TASKS / TODOs / commitments out of a file — checkbox items, TODO/FIXME/ACTION markers, and 'need to / must / follow up / remember to' phrasing. Use to turn notes into follow-ups (then optionally add_reminder for each).",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
+                 ["item": item], required: ["item"]),
+            tool("sentiment", "Gauge the emotional TONE of a file (how positive/negative) — useful for reviews, feedback, or journal entries. Returns a label and a −1…+1 score. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("reading_time", "Estimate how long a file takes to read — word count and minutes (~220 wpm).",
                  ["item": item], required: ["item"]),
@@ -1142,6 +1145,17 @@ struct ToolAgent: Sendable {
                 return ("No named entities (people, organizations, places) found in '\(it.title)'.", [])
             }
             return ("Entities in '\(it.title)':\n" + summary, [])
+
+        case "sentiment":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Gauging the tone of \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = SentimentAnalyzer.summary(text) else {
+                return ("Couldn't gauge sentiment for '\(it.title)' (no readable text).", [])
+            }
+            return ("Tone of '\(it.title)': " + summary, [])
 
         case "reading_time":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
