@@ -11,7 +11,7 @@ let package = Package(
     ],
     dependencies: [
         // The top-level agent harness, consumed as a published package.
-        .package(url: "https://github.com/paean-ai/Fathom.git", from: "0.3.0")
+        .package(url: "https://github.com/paean-ai/Fathom.git", from: "0.4.0")
     ],
     targets: [
         .executableTarget(

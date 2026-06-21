@@ -1987,9 +1987,8 @@ struct ToolAgent: Sendable {
             return ("Saved note '\(title)' to your knowledge base — it's searchable now (\(path)).", [])
 
         case "current_datetime":
-            let df = DateFormatter()
-            df.dateFormat = "EEEE, d MMMM yyyy, HH:mm zzz"
-            return ("Current local date and time: \(df.string(from: Date())).", [])
+            // Delegate the formatting to Fathom's built-in datetime renderer.
+            return ("Current local date and time: \(Fathom.CurrentDateTimeTool.render(Date(), style: .human)).", [])
 
         case "calculate":
             guard let expr = arg("expression")?.trimmingCharacters(in: .whitespacesAndNewlines), !expr.isEmpty
