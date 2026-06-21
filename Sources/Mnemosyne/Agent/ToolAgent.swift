@@ -206,6 +206,7 @@ struct ToolAgent: Sendable {
     • slugify(text) — make a URL/filename-safe slug from a string (accents folded, punctuation collapsed).
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
+    • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
     • make_table(data) — format rows into an aligned markdown table (first row = header).
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
@@ -349,6 +350,10 @@ struct ToolAgent: Sendable {
                  ["text": ["type": "string", "description": "The text to encode, or the base64 to decode."],
                   "mode": ["type": "string", "enum": ["encode", "decode"], "description": "encode (default) or decode."]],
                  required: ["text"]),
+            tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
+                 ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
+                  "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
+                 required: ["from"]),
             tool("bar_chart", "Render a horizontal ASCII bar chart to VISUALIZE numbers in the chat — pass 'label: value' pairs (comma- or newline-separated), e.g. 'Jan: 8, Feb: 5, Mar: 3'. Great for showing column stats, trends, or tallies you computed.",
                  ["data": ["type": "string", "description": "Label:value pairs, comma- or newline-separated, e.g. 'Q1: 12, Q2: 19'. Plain numbers only (no thousands separators)."]],
                  required: ["data"]),
@@ -2006,6 +2011,14 @@ struct ToolAgent: Sendable {
                 return (decoded, [])
             }
             return (Base64Util.encode(text), [])
+
+        case "date_diff":
+            guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
+            let to = arg("to").flatMap { $0.isEmpty ? nil : $0 } ?? DateMath.todayISO(Date())
+            guard let days = DateMath.daysBetween(from: from, to: to) else {
+                return ("Couldn't parse the dates — use YYYY-MM-DD.", [])
+            }
+            return (DateMath.phrase(days, from: from, to: to), [])
 
         case "make_table":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (rows of cells).", []) }
