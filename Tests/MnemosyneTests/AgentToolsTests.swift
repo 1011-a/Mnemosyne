@@ -439,6 +439,29 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testParseItemListSplitsTrimsAndDedupes() {
+        XCTAssertEqual(ToolAgent.parseItemList("a.txt, b.txt ,c.txt"), ["a.txt", "b.txt", "c.txt"])
+        // Newlines also separate; blanks dropped; case-insensitive dedupe keeps first spelling.
+        XCTAssertEqual(ToolAgent.parseItemList("Notes.md\n notes.md ,, Plan.md"), ["Notes.md", "Plan.md"])
+        XCTAssertTrue(ToolAgent.parseItemList("   ,  , ").isEmpty)
+        XCTAssertTrue(ToolAgent.parseItemList("").isEmpty)
+    }
+
+    func testBatchTagIsRegisteredAndConfirmGated() {
+        // It's a real, callable tool…
+        let names = ToolAgent.tools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
+        XCTAssertTrue(names.contains("batch_tag"), "batch_tag is exposed to the model")
+        // …and a bulk mutation, so the loop treats it as state-changing (skips the verify pass).
+        XCTAssertTrue(ToolAgent.mutationTools.contains("batch_tag"), "batch_tag must be a mutation tool")
+        // Its schema requires items + tag and exposes a confirm gate.
+        let schema = ToolAgent.tools().first { ($0["function"] as? [String: Any])?["name"] as? String == "batch_tag" }
+        let fn = schema?["function"] as? [String: Any]
+        let params = fn?["parameters"] as? [String: Any]
+        let props = params?["properties"] as? [String: Any]
+        XCTAssertNotNil(props?["confirm"], "batch_tag exposes a confirm flag for two-step safety")
+        XCTAssertEqual(params?["required"] as? [String], ["items", "tag"])
+    }
+
     func testTagsFromNeighborsRanksByRankDecayedVotes() {
         // Neighbors ordered most-similar-first. Closer neighbors weigh more (1/(rank+1)).
         let neighbors = [

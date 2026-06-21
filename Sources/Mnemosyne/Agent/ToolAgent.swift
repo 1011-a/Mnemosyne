@@ -67,7 +67,7 @@ struct ToolAgent: Sendable {
     /// critic/seed when the user asked for an action.
     static let mutationTools: Set<String> = [
         "add_tag", "remove_tag", "rename_tag", "delete_tag", "delete_item",
-        "tag_search_results", "reingest", "save_note",
+        "tag_search_results", "batch_tag", "reingest", "save_note",
         "add_reminder", "complete_reminder", "merge_tags", "suggest_labels", "auto_label_untagged",
         "pin_fact", "unpin_fact",
     ]
@@ -182,7 +182,7 @@ struct ToolAgent: Sendable {
     use delete_tag; to rename one use rename_tag. When the user says "delete/remove the X label" without \
     naming a file, they mean delete_tag (the whole library). ALWAYS actually call the tool — never just \
     say you did it. If unsure which label exists, call list_tags first.
-    SAFETY: destructive / bulk actions are two-step — delete_item, tag_search_results, merge_tags, and \
+    SAFETY: destructive / bulk actions are two-step — delete_item, tag_search_results, batch_tag, merge_tags, and \
     auto_label_untagged first PREVIEW (call without confirm/apply). Relay the preview, get the user's explicit \
     "yes", then call again with confirm=true / apply=true. Never mutate on a vague request.
     BEST PRACTICE: don't repeat a tool call you already made; if two steps find nothing new, answer with what \
@@ -291,6 +291,11 @@ struct ToolAgent: Sendable {
                   "tag": tag,
                   "confirm": ["type": "boolean", "description": "Must be true to apply. Omit/false = preview the matched files."]],
                  required: ["query", "tag"]),
+            tool("batch_tag", "Add ONE label to SEVERAL specific files named by title, in one confirmed action — e.g. to co-tag the files from suggest_connections. Requires confirm=true; without it, previews which titles resolve (and flags any missing/ambiguous).",
+                 ["items": ["type": "string", "description": "Comma-separated file titles to label."],
+                  "tag": tag,
+                  "confirm": ["type": "boolean", "description": "Must be true to apply. Omit/false = preview which files would be labelled."]],
+                 required: ["items", "tag"]),
             tool("reingest", "Re-read a file from disk and re-index it (use after the file changed on disk).",
                  ["item": item], required: ["item"]),
             tool("web_search", "Search the OPEN WEB for current information not in the user's files. Returns numbered web sources you can cite. Use it for recent events, definitions, or to augment local knowledge.",
@@ -809,6 +814,18 @@ struct ToolAgent: Sendable {
     /// new citations, and changed nothing. Two such rounds running ⇒ force an answer.
     static func isStall(freshCalls: Int, newCitations: Int, didMutate: Bool) -> Bool {
         freshCalls == 0 && newCitations == 0 && !didMutate
+    }
+
+    /// Parse a comma- (or newline-) separated list of item references into a clean,
+    /// de-duplicated list, order preserved (case-insensitive dedupe, first spelling kept).
+    /// Backs `batch_tag`. Pure → unit-testable.
+    static func parseItemList(_ raw: String) -> [String] {
+        var seen = Set<String>(); var out: [String] = []
+        for piece in raw.split(whereSeparator: { $0 == "," || $0 == "\n" }) {
+            let s = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !s.isEmpty, seen.insert(s.lowercased()).inserted { out.append(s) }
+        }
+        return out
     }
 
     /// Autonomous label suggestion via a COLLABORATIVE signal: propose tags for an item
@@ -1618,6 +1635,48 @@ struct ToolAgent: Sendable {
                 }
             }
             return ("Added label '\(tag)' to \(applied) of \(targets.count) file(s) matching '\(q)'.", [])
+
+        case "batch_tag":
+            guard let itemsRaw = arg("items"),
+                  let tag = arg("tag")?.trimmingCharacters(in: .whitespacesAndNewlines), !tag.isEmpty
+            else { return ("Missing 'items' or 'tag'.", []) }
+            let refs = Self.parseItemList(itemsRaw)
+            guard !refs.isEmpty else { return ("No file titles given in 'items'.", []) }
+            onStatus("Resolving \(refs.count) file(s) to label '\(tag)'…")
+            // Resolve each title; collect uniquely-resolved targets and report problems.
+            var targets: [(id: String, title: String)] = []
+            var resolvedIDs = Set<String>()
+            var missing: [String] = [], ambiguous: [String] = []
+            for ref in refs {
+                let m = await resolveItems(ref)
+                if m.count == 1, let it = m.first {
+                    if resolvedIDs.insert(it.id).inserted { targets.append((it.id, it.title)) }
+                } else if m.isEmpty { missing.append(ref) }
+                else { ambiguous.append(ref) }
+            }
+            var notes: [String] = []
+            if !missing.isEmpty { notes.append("not found: \(missing.joined(separator: ", "))") }
+            if !ambiguous.isEmpty { notes.append("ambiguous (name several files): \(ambiguous.joined(separator: ", "))") }
+            let noteText = notes.isEmpty ? "" : " (" + notes.joined(separator: "; ") + ")"
+            guard !targets.isEmpty else {
+                return ("Couldn't resolve any of those titles to a single file\(noteText).", [])
+            }
+            // Gated mutation: preview unless confirmed.
+            guard Self.boolArg(args, "confirm") else {
+                return ("CONFIRM NEEDED — this will add label '\(tag)' to \(targets.count) file(s): " +
+                        targets.map(\.title).joined(separator: "; ") + noteText +
+                        ". Ask the user to confirm, then call again with confirm=true.", [])
+            }
+            let low = tag.lowercased()
+            var applied = 0
+            for t in targets {
+                var tags = (try? await store.tags(forItem: t.id)) ?? []
+                if !tags.contains(where: { $0.lowercased() == low }) {
+                    tags.append(tag)
+                    if (try? await store.setTags(tags, forItem: t.id)) != nil { applied += 1 }
+                }
+            }
+            return ("Added label '\(tag)' to \(applied) of \(targets.count) file(s)\(noteText).", [])
 
         case "reingest":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
