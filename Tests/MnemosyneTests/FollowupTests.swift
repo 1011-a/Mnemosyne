@@ -69,6 +69,34 @@ final class FollowupTests: XCTestCase {
         XCTAssertTrue(f.contains { $0.send.hasPrefix("Search the web for") })
     }
 
+    func testContentAwareTimelineActionWhenAnswerHasDates() {
+        let cites = [Citation(index: 1, title: "contract.pdf", path: "/p", snippet: "", itemID: "a")]
+        let answer = "The contract runs from 2026-01-05 to Mar 1, 2026, with a review on 5 February 2026. " + longAnswer
+        let f = FollowupSuggester.followups(question: "key dates?", answer: answer, citations: cites)
+        XCTAssertTrue(f.contains { $0.isAction && $0.send == "Build a timeline of contract.pdf" },
+                      "dates in the answer ⇒ offer a timeline of the cited file (by its real name)")
+    }
+
+    func testContentAwareFiguresActionWhenAnswerHasAmounts() {
+        let cites = [Citation(index: 1, title: "invoice.pdf", path: "/p", snippet: "", itemID: "a")]
+        let answer = "The invoice totals $5,000 with a 20% deposit due now. " + longAnswer
+        let f = FollowupSuggester.followups(question: "how much?", answer: answer, citations: cites)
+        XCTAssertTrue(f.contains { $0.isAction && $0.send == "Extract the figures from invoice.pdf" },
+                      "amounts/percentages in the answer ⇒ offer to pull the figures")
+    }
+
+    func testContentAwareActionsSuppressedWithoutCuesOrSource() {
+        // No dates/figures in the answer ⇒ neither specialized action appears.
+        let cites = [Citation(index: 1, title: "notes.md", path: "/p", snippet: "", itemID: "a")]
+        let plain = FollowupSuggester.followups(question: "summary?", answer: longAnswer, citations: cites)
+        XCTAssertFalse(plain.contains { $0.send.hasPrefix("Build a timeline") })
+        XCTAssertFalse(plain.contains { $0.send.hasPrefix("Extract the figures") })
+        // Cues present but no citation ⇒ nothing to act on.
+        let noSrc = FollowupSuggester.followups(question: "q",
+                        answer: "Dates 2026-01-01 and 2026-02-02 cost $10.", citations: [])
+        XCTAssertFalse(noSrc.contains { $0.send.hasPrefix("Build a timeline") })
+    }
+
     func testTopicPhraseTrimsPunctuationAndLength() {
         XCTAssertEqual(FollowupSuggester.topicPhrase("How does vector search work?"), "How does vector search work")
         XCTAssertEqual(FollowupSuggester.topicPhrase("摘要？"), "摘要")

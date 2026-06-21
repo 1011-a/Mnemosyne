@@ -37,6 +37,19 @@ enum FollowupSuggester {
             add(Followup(label: "More on \(first)", send: "Tell me more about \(first)",
                          icon: "text.magnifyingglass", isAction: false))
         }
+        // 1b) Content-aware actions — when the answer surfaced DATES or FIGURES, proactively
+        // offer the specialized tool for them (timeline / extract_figures) on the top source.
+        // These rank above generic actions so the agent offers the RIGHT next move.
+        if let firstRaw = rawTitle(citations) {
+            if DateExtractor.extract(answer).count >= 2 {
+                add(Followup(label: "Build a timeline", send: "Build a timeline of \(firstRaw)",
+                             icon: "calendar", isAction: true))
+            }
+            if FigureExtractor.summary(answer) != nil {
+                add(Followup(label: "Pull the figures", send: "Extract the figures from \(firstRaw)",
+                             icon: "dollarsign.circle", isAction: true))
+            }
+        }
         // 2) Build — turn a substantial, grounded answer into a deliverable.
         if substantial, !titles.isEmpty {
             add(Followup(label: "Build a visual summary",
@@ -63,6 +76,12 @@ enum FollowupSuggester {
                      icon: "list.bullet", isAction: false))
 
         return Array(out.prefix(max))
+    }
+
+    /// The actual (unmodified) title of the first cited source — used in tool commands
+    /// that resolve a file by its real name (timeline / extract_figures). nil if none.
+    static func rawTitle(_ citations: [Citation]) -> String? {
+        citations.first { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty }?.title
     }
 
     /// Distinct human-readable cited file names, in citation order (max 3).
