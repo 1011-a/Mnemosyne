@@ -167,6 +167,7 @@ struct ToolAgent: Sendable {
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
     • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
     • library_languages — break the whole library down by language (e.g. English vs Chinese share).
+    • suggest_connections(item) — find related-but-unlabelled-together files to propose linking (autonomous).
     Work in three phases — PLAN, ACT, then answer:
     1. PLAN: decide if the request is a QUESTION (needs evidence) or an ACTION (manage the KB), and \
        which tool(s) it needs.
@@ -274,6 +275,8 @@ struct ToolAgent: Sendable {
                   "field": ["type": "string", "description": "Which date to filter on: 'modified' (default) or 'created'."],
                   "limit": ["type": "integer", "description": "Max files to list (default 25)."]]),
             tool("related_items", "Find files semantically related to a given file.", ["item": item], required: ["item"]),
+            tool("suggest_connections", "AUTONOMOUS suggestion: for a file, surface semantically-related files that share NO label with it — content you could connect but haven't yet. Offer to co-tag them. Great for 'what should I link to this'.",
+                 ["item": item], required: ["item"]),
             tool("reveal_in_finder", "Reveal a file in macOS Finder (opens Finder, selects the file).", ["item": item], required: ["item"]),
             tool("open_file", "Open a file with its default macOS application.", ["item": item], required: ["item"]),
             tool("delete_item", "Remove a file from the knowledge base ONLY (the file on disk is untouched). DESTRUCTIVE: requires the EXACT title AND confirm=true. Call once WITHOUT confirm to preview; only call with confirm=true after the user agrees.",
@@ -803,6 +806,21 @@ struct ToolAgent: Sendable {
     /// new citations, and changed nothing. Two such rounds running ⇒ force an answer.
     static func isStall(freshCalls: Int, newCitations: Int, didMutate: Bool) -> Bool {
         freshCalls == 0 && newCitations == 0 && !didMutate
+    }
+
+    /// Autonomous suggestion: from a source item's tags and its semantically-related
+    /// candidates, surface the ones that share NO tag with the source — topically near
+    /// but not yet linked, so the agent can offer to co-tag them. Candidate order (the
+    /// caller's similarity ranking) is preserved. Tag matching is case-insensitive. An
+    /// untagged candidate qualifies (it's a prime connection opportunity). Pure → testable.
+    static func suggestedConnections(sourceTags: Set<String>,
+                                     candidates: [(id: String, title: String, tags: Set<String>)])
+        -> [(id: String, title: String, sharedNone: Bool)] {
+        let src = Set(sourceTags.map { $0.lowercased() })
+        return candidates.compactMap { c in
+            let ctags = Set(c.tags.map { $0.lowercased() })
+            return ctags.isDisjoint(with: src) ? (id: c.id, title: c.title, sharedNone: true) : nil
+        }
     }
 
     /// Bound a single tool result fed back to the model, so one huge output (a long web
@@ -1448,6 +1466,26 @@ struct ToolAgent: Sendable {
             onStatus("Finding files related to \(it.title)…")
             let related = (try? await store.relatedItems(to: it.id, k: 6)) ?? []
             return render(related, startingAt: citationOffset)
+
+        case "suggest_connections":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Looking for unlinked connections to \(it.title)…")
+            let related = (try? await store.relatedItems(to: it.id, k: 8)) ?? []
+            let byItem = (try? await store.tagsByItem()) ?? [:]
+            let sourceTags = Set(byItem[it.id] ?? [])
+            let candidates = related.map { (id: $0.item.id, title: $0.item.title,
+                                            tags: Set(byItem[$0.item.id] ?? [])) }
+            let connections = Self.suggestedConnections(sourceTags: sourceTags, candidates: candidates)
+            guard !connections.isEmpty else {
+                return ("No unlinked connections for '\(it.title)' — its related files already share a label (or there are no related files).", [])
+            }
+            let names = connections.prefix(6).map { "'\($0.title)'" }.joined(separator: ", ")
+            let tagHint = sourceTags.isEmpty
+                ? "'\(it.title)' has no labels yet — consider adding one and applying it across these."
+                : "None share a label with '\(it.title)' (its labels: \(sourceTags.sorted().joined(separator: ", "))). Offer to co-tag them."
+            return ("\(connections.count) possible connection(s) to '\(it.title)': \(names). \(tagHint)", [])
 
         case "reveal_in_finder":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }

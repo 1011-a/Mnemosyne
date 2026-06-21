@@ -439,6 +439,25 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testSuggestedConnectionsSurfacesUnlinkedRelated() {
+        let source: Set<String> = ["machine-learning", "research"]
+        let candidates: [(id: String, title: String, tags: Set<String>)] = [
+            ("a", "shares a tag", ["Research", "draft"]),          // shares 'research' (case-insensitive) → excluded
+            ("b", "no overlap", ["cooking", "travel"]),            // disjoint → included
+            ("c", "untagged note", []),                            // untagged → included (prime opportunity)
+            ("d", "also shares", ["machine-learning"]),            // shares → excluded
+        ]
+        let out = ToolAgent.suggestedConnections(sourceTags: source, candidates: candidates)
+        XCTAssertEqual(out.map(\.id), ["b", "c"], "only disjoint/untagged candidates, original order kept")
+        XCTAssertTrue(out.allSatisfy(\.sharedNone))
+
+        // A source with no tags: everything is a connection opportunity.
+        let all = ToolAgent.suggestedConnections(sourceTags: [], candidates: candidates)
+        XCTAssertEqual(all.map(\.id), ["a", "b", "c", "d"], "no source tags ⇒ nothing can overlap")
+
+        XCTAssertTrue(ToolAgent.suggestedConnections(sourceTags: source, candidates: []).isEmpty)
+    }
+
     func testClampToolResultBoundsLargeOutput() {
         // Small results pass through untouched.
         let small = "a short tool result"
