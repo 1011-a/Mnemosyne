@@ -11,7 +11,13 @@ enum MarkdownTable {
         guard !lines.isEmpty else { return nil }
 
         let delim: Character = lines.contains(where: { $0.contains("|") }) ? "|" : ","
-        let rows = lines.map { cells($0, delim: delim) }
+        return tableFrom(lines.map { cells($0, delim: delim) })
+    }
+
+    /// Build an aligned markdown table from already-parsed rows (first row = header). Shared
+    /// by `make` and the `csv_to_table` tool. Nil if there are no rows/columns.
+    static func tableFrom(_ rows: [[String]]) -> String? {
+        guard !rows.isEmpty else { return nil }
         let columns = rows.map(\.count).max() ?? 0
         guard columns > 0 else { return nil }
 

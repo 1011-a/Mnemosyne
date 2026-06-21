@@ -184,6 +184,7 @@ struct ToolAgent: Sendable {
     • document_outline(item) — the file's exact markdown heading table-of-contents, instant + free.
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
+    • csv_to_table(item) — render a CSV/TSV file as an aligned markdown table (first 30 rows).
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
     • inspect_json(item) — describe a JSON file's shape: keys, value types, array lengths, nesting.
@@ -288,6 +289,8 @@ struct ToolAgent: Sendable {
             tool("extract_tables", "Pull markdown TABLES out of a file as parsed rows — a doc's densest structured data (specs, schedules, pricing, comparisons). Returns each table's dimensions, headers, and preview rows.",
                  ["item": item], required: ["item"]),
             tool("inspect_csv", "Parse a CSV or TSV file (spreadsheet/export) into columns and rows — auto-detects the delimiter, handles quoted fields with embedded commas/newlines. Reports the column names, row count, and sample rows.",
+                 ["item": item], required: ["item"]),
+            tool("csv_to_table", "Render a CSV/TSV file as a clean aligned MARKDOWN table for display in the chat (first N rows). Use when the user wants to SEE a spreadsheet, not just its stats.",
                  ["item": item], required: ["item"]),
             tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
                  ["item": item, "column": ["type": "string", "description": "The exact column header to analyze (case-insensitive)."]],
@@ -1700,6 +1703,23 @@ struct ToolAgent: Sendable {
                 return ("'\(it.title)' doesn't parse as CSV/TSV (no rows found).", [])
             }
             return ("'\(it.title)':\n\(summary)", [])
+
+        case "csv_to_table":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Rendering \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            guard !rows.isEmpty else { return ("'\(it.title)' has no rows to render.", []) }
+            let maxRows = 30
+            let clamped = Array(rows.prefix(maxRows + 1))   // header + up to maxRows data rows
+            guard let table = MarkdownTable.tableFrom(clamped) else {
+                return ("Couldn't render '\(it.title)' as a table.", [])
+            }
+            let note = rows.count > maxRows + 1 ? "\n…(\(rows.count - 1 - maxRows) more rows)" : ""
+            return ("\(it.title):\n\(table)\(note)", [])
 
         case "csv_column_stats":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }

@@ -35,4 +35,11 @@ final class MarkdownTableTests: XCTestCase {
         XCTAssertNil(MarkdownTable.make(""))
         XCTAssertNil(MarkdownTable.make("   \n  "))
     }
+
+    func testTableFromParsedRowsMatchesMake() {
+        // The shared core used by csv_to_table produces the same output as make().
+        let rows = [["Name", "Age"], ["Ada", "36"]]
+        XCTAssertEqual(MarkdownTable.tableFrom(rows), MarkdownTable.make("Name,Age\nAda,36"))
+        XCTAssertNil(MarkdownTable.tableFrom([]))
+    }
 }
