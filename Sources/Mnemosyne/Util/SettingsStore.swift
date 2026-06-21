@@ -122,14 +122,12 @@ struct SettingsStore: @unchecked Sendable {
         static let contextBudget = "mnemosyne.contextBudget"
     }
 
-    /// Conversation context budget in tokens — how much history to send before the
-    /// agent compacts the oldest turns. The models now support a 1M context window, so
-    /// the budget can go all the way up. Clamped to a sane 16k–1M.
+    /// Conversation context budget in tokens. NOT user-tunable: the agent handles its own
+    /// context for the BEST quality, always using the full 1M-token window the models now
+    /// support (history is kept verbatim; compaction only kicks in past 1M). One less knob
+    /// for the user to think about.
     static let maxContextBudget = 1_000_000
-    var contextBudget: Int {
-        get { Swift.min(Self.maxContextBudget, Swift.max(16_000, defaults.object(forKey: Key.contextBudget) as? Int ?? ContextManager.defaultBudgetTokens)) }
-        nonmutating set { defaults.set(Swift.min(Self.maxContextBudget, Swift.max(16_000, newValue)), forKey: Key.contextBudget) }
-    }
+    var contextBudget: Int { Self.maxContextBudget }
 
     /// Which engine builds artifacts (create_artifact). Defaults to DeepSeek-native.
     var buildEngine: BuildEngine {

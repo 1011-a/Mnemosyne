@@ -15,7 +15,6 @@ struct SettingsView: View {
     @State private var agentic = true
     @State private var agenticCritic = true
     @State private var buildEngine: BuildEngine = .deepseek
-    @State private var contextBudget = 96_000
     @State private var autoTag = true
     @State private var keywordWeight = 0.3
     @State private var model = "deepseek-chat"
@@ -230,21 +229,6 @@ struct SettingsView: View {
                         Text(buildEngine.detail)
                             .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Picker("Conversation memory", selection: $contextBudget) {
-                            Text("Focused · 32K").tag(32_000)
-                            Text("Balanced · 64K").tag(64_000)
-                            Text("Long · 96K").tag(96_000)
-                            Text("Extended · 128K").tag(128_000)
-                            Text("Huge · 256K").tag(256_000)
-                            Text("Vast · 512K").tag(512_000)
-                            Text("Maximum · 1M").tag(1_000_000)
-                        }
-                        .onChange(of: contextBudget) { _, v in services.settings.contextBudget = v }
-                        .accessibilityIdentifier("settings.contextBudget")
-                        Text("How much chat history the agent keeps before compacting the oldest turns. The models now support a 1M-token window — bigger keeps more verbatim.")
-                            .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
-                    }
                 }
                 .tint(DS.ColorToken.iris)
                 .padding(DS.Space.x6)
@@ -302,7 +286,6 @@ struct SettingsView: View {
             agentic = services.settings.agentic
             agenticCritic = services.settings.agenticCritic
             buildEngine = services.settings.buildEngine
-            contextBudget = services.settings.contextBudget
             autoTag = services.settings.autoTag
             model = services.settings.model
             keywordWeight = services.settings.keywordWeight

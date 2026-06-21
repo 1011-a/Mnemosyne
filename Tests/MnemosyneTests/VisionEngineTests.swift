@@ -58,18 +58,11 @@ final class VisionEngineTests: XCTestCase {
         XCTAssertEqual(SettingsStore(defaults: d).buildEngine, .deepseek, "unknown value falls back to DeepSeek")
     }
 
-    func testContextBudgetDefaultsAndClamps() {
+    func testContextBudgetIsAlwaysMaxQuality() {
+        // No user knob: the agent always uses the full 1M-token window for best quality.
         let d = freshDefaults()
-        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, ContextManager.defaultBudgetTokens, "generous default")
-        SettingsStore(defaults: d).contextBudget = 64_000
-        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 64_000)
-        // Clamped to the sane 16k–1M range (the models now support a 1M window).
-        SettingsStore(defaults: d).contextBudget = 5_000
-        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 16_000)
-        SettingsStore(defaults: d).contextBudget = 512_000
-        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 512_000, "512K is now within range")
-        SettingsStore(defaults: d).contextBudget = 5_000_000
-        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 1_000_000, "clamped to the 1M ceiling")
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, SettingsStore.maxContextBudget)
+        XCTAssertEqual(SettingsStore.maxContextBudget, 1_000_000)
     }
 
     // MARK: ingest auto-fallback ordering
