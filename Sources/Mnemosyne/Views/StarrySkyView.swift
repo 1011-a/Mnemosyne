@@ -90,6 +90,15 @@ struct StarrySkyView: View {
                 ctx.fill(Path(ellipseIn: CGRect(x: cx - 90, y: groundY - 46, width: 180, height: 90)),
                          with: .radialGradient(Gradient(colors: [warm.opacity(0.30), warmDeep.opacity(0.10), .clear]),
                                                center: CGPoint(x: cx + 34, y: groundY - 6), startRadius: 2, endRadius: 96))
+                // The "wish star" the little one points at — extra bright, gently pulsing.
+                let wish = CGPoint(x: cx + 40, y: H * 0.28)
+                let pulse = 0.7 + 0.3 * abs(sin(t * 1.1))
+                ctx.fill(Path(ellipseIn: CGRect(x: wish.x - 14, y: wish.y - 14, width: 28, height: 28)),
+                         with: .radialGradient(Gradient(colors: [starLit.opacity(0.35 * pulse), .clear]),
+                                               center: wish, startRadius: 0, endRadius: 14))
+                ctx.fill(Path(ellipseIn: CGRect(x: wish.x - 2.2, y: wish.y - 2.2, width: 4.4, height: 4.4)),
+                         with: .color(starLit))
+
                 drawFamily(&ctx, centerX: cx, groundY: groundY, t: t)
                 // The lantern itself (small warm point with a glow), to one side.
                 let lan = CGPoint(x: cx + 40, y: groundY - 6)
@@ -133,31 +142,100 @@ struct StarrySkyView: View {
         return p
     }
 
-    /// A family of four seen from behind, sitting close on the hill, looking up:
-    /// two taller parents flanking two smaller girls. Simple warm-dark silhouettes.
+    private enum Hair { case none, bun, pigtails, ponytail }
+
+    /// A family of four seen from behind, sitting close on a blanket, gazing up — drawn as
+    /// shaped silhouettes (shoulders, bent knees, hair) with a warm RIM LIGHT from the
+    /// lantern so they read as cozy, backlit people rather than flat blobs. Dad has an arm
+    /// around the little one, who points up at the brightest star.
     private func drawFamily(_ ctx: inout GraphicsContext, centerX cx: CGFloat, groundY: CGFloat, t: Double) {
-        // gentle "breathing" sway so it feels alive
-        let sway = CGFloat(sin(t * 0.8)) * 0.6
-        func person(_ x: CGFloat, headR: CGFloat, bodyH: CGFloat, bodyW: CGFloat, lean: CGFloat) {
-            // body: a rounded shoulders shape (sitting)
-            let bx = x - bodyW / 2 + lean
-            let by = groundY - bodyH
-            ctx.fill(Path(roundedRect: CGRect(x: bx, y: by, width: bodyW, height: bodyH + 8),
-                          cornerSize: CGSize(width: bodyW * 0.5, height: bodyW * 0.5)),
-                     with: .color(figure))
-            // head
-            let hx = x + lean * 1.4
-            ctx.fill(Path(ellipseIn: CGRect(x: hx - headR, y: by - headR * 1.7, width: headR * 2, height: headR * 2)),
-                     with: .color(figure))
+        let breathe = CGFloat(sin(t * 0.9)) * 0.5
+        let rim = warm.opacity(0.55)
+
+        /// One seated person. `s` scales the whole body; rim-lit on the right (lantern) side.
+        func sitter(x: CGFloat, s: CGFloat, hair: Hair, armUp: Bool, lean: CGFloat, headTilt: CGFloat) {
+            let baseY = groundY + breathe
+            let shoulderY = baseY - 30 * s
+            let neckY = shoulderY - 2 * s
+            let headR = 7.5 * s
+            let headCx = x + lean * 2 + headTilt
+            let headCy = neckY - headR
+
+            // Body: lap (wide, sitting) → torso tapering to rounded shoulders. One closed path.
+            var body = Path()
+            let lapW = 17 * s, lapY = baseY + 6 * s
+            body.move(to: CGPoint(x: x - lapW, y: lapY))
+            body.addQuadCurve(to: CGPoint(x: x - 9 * s + lean, y: shoulderY),
+                              control: CGPoint(x: x - 13 * s, y: baseY - 16 * s))
+            body.addQuadCurve(to: CGPoint(x: x + lean, y: neckY - 3 * s),                 // left shoulder→neck
+                              control: CGPoint(x: x - 7 * s + lean, y: neckY - 4 * s))
+            body.addQuadCurve(to: CGPoint(x: x + 9 * s + lean, y: shoulderY),             // neck→right shoulder
+                              control: CGPoint(x: x + 7 * s + lean, y: neckY - 4 * s))
+            body.addQuadCurve(to: CGPoint(x: x + lapW, y: lapY),
+                              control: CGPoint(x: x + 13 * s, y: baseY - 16 * s))
+            body.addQuadCurve(to: CGPoint(x: x - lapW, y: lapY),                          // round the seat
+                              control: CGPoint(x: x, y: lapY + 9 * s))
+            body.closeSubpath()
+            ctx.fill(body, with: .color(figure))
+
+            // Bent knees: two small bumps in front of the lap.
+            for dx in [-7.5 * s, 6.5 * s] {
+                ctx.fill(Path(ellipseIn: CGRect(x: x + dx - 4 * s, y: baseY - 1 * s, width: 8 * s, height: 7 * s)),
+                         with: .color(figure))
+            }
+
+            // Optional raised arm pointing up (storytelling: "look!").
+            if armUp {
+                var arm = Path()
+                arm.move(to: CGPoint(x: x + 6 * s + lean, y: shoulderY + 2 * s))
+                arm.addQuadCurve(to: CGPoint(x: x + 15 * s + lean, y: shoulderY - 22 * s),
+                                 control: CGPoint(x: x + 16 * s + lean, y: shoulderY - 6 * s))
+                ctx.stroke(arm, with: .color(figure), style: StrokeStyle(lineWidth: 3.4 * s, lineCap: .round))
+                ctx.stroke(arm, with: .color(rim), style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
+            }
+
+            // Head + hair.
+            let headRect = CGRect(x: headCx - headR, y: headCy - headR, width: headR * 2, height: headR * 2)
+            ctx.fill(Path(ellipseIn: headRect), with: .color(figure))
+            switch hair {
+            case .none: break
+            case .bun:
+                ctx.fill(Path(ellipseIn: CGRect(x: headCx - 3 * s, y: headCy - headR - 4 * s,
+                                                width: 6 * s, height: 6 * s)), with: .color(figure))
+            case .pigtails:
+                for dx in [-headR - 1.5 * s, headR - 2.5 * s] {
+                    ctx.fill(Path(ellipseIn: CGRect(x: headCx + dx, y: headCy - 1 * s,
+                                                    width: 5 * s, height: 7 * s)), with: .color(figure))
+                }
+            case .ponytail:
+                ctx.fill(Path(ellipseIn: CGRect(x: headCx - headR - 3 * s, y: headCy - 1 * s,
+                                                width: 5 * s, height: 10 * s)), with: .color(figure))
+            }
+
+            // Warm rim light on the silhouette edges (the cozy glow).
+            ctx.stroke(body, with: .color(rim), lineWidth: 1.3)
+            ctx.stroke(Path(ellipseIn: headRect.insetBy(dx: 0.4, dy: 0.4)), with: .color(rim), lineWidth: 1.2)
         }
-        // Two girls in the middle (smaller), leaning toward the parents; parents outside.
-        person(cx - 30 + sway, headR: 7,   bodyH: 26, bodyW: 22, lean: -1)   // parent (left)
-        person(cx - 11 + sway, headR: 5,   bodyH: 18, bodyW: 15, lean: -2.5) // girl  (leans left, onto parent)
-        person(cx + 11 + sway, headR: 5,   bodyH: 18, bodyW: 15, lean:  2.5) // girl  (leans right)
-        person(cx + 31 + sway, headR: 7.5, bodyH: 27, bodyW: 23, lean:  1)   // parent (right)
-        // A small blanket line under them.
-        ctx.stroke(Path { p in p.move(to: CGPoint(x: cx - 46, y: groundY + 4)); p.addLine(to: CGPoint(x: cx + 48, y: groundY + 4)) },
-                   with: .color(warmDeep.opacity(0.5)), lineWidth: 2)
+
+        // Blanket they sit on.
+        ctx.fill(Path(roundedRect: CGRect(x: cx - 52, y: groundY + 3, width: 104, height: 7),
+                      cornerSize: CGSize(width: 4, height: 4)),
+                 with: .color(warmDeep.opacity(0.45)))
+
+        // Composition (back→front so overlaps read): Mom (bun) · little girl pointing ·
+        // big girl (pigtails) leaning · Dad (arm around the little ones).
+        sitter(x: cx + 33, s: 1.05, hair: .bun,     armUp: false, lean: -1.0, headTilt: -1)  // Mom (right)
+        sitter(x: cx - 33, s: 1.18, hair: .none,    armUp: false, lean:  1.0, headTilt:  1)  // Dad (left, tallest)
+        sitter(x: cx - 12, s: 0.80, hair: .pigtails, armUp: false, lean: -3.0, headTilt: -1) // girl, leaning on dad
+        sitter(x: cx + 11, s: 0.74, hair: .ponytail, armUp: true,  lean:  2.0, headTilt:  2) // little girl, pointing up
+
+        // Dad's arm around the leaning girl (a soft connecting curve).
+        var hug = Path()
+        hug.move(to: CGPoint(x: cx - 24, y: groundY - 22 + breathe))
+        hug.addQuadCurve(to: CGPoint(x: cx - 6, y: groundY - 14 + breathe),
+                         control: CGPoint(x: cx - 14, y: groundY - 10 + breathe))
+        ctx.stroke(hug, with: .color(figure), style: StrokeStyle(lineWidth: 4, lineCap: .round))
+        ctx.stroke(hug, with: .color(rim), style: StrokeStyle(lineWidth: 1, lineCap: .round))
     }
 
     private func grouped(_ n: Int) -> String {
