@@ -126,37 +126,16 @@ struct CodexCliClient: Sendable {
 
     private static func run(bin: String, args: [String], outputPath: String, timeout: TimeInterval, purpose: String) async -> String? {
         IngestDebugLog.write("CODEX spawn purpose=\(purpose) bin=\(bin)")
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: bin)
-        proc.arguments = args
-        let outPipe = Pipe()
-        proc.standardOutput = outPipe
-        proc.standardError = outPipe
-        proc.standardInput = FileHandle.nullDevice
-
         var env = ProcessInfo.processInfo.environment
         let home = NSHomeDirectory()
         let extra = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
         env["PATH"] = (extra + [env["PATH"] ?? ""]).joined(separator: ":")
-        proc.environment = env
 
-        do { try proc.run() } catch { return nil }
-
-        let watchdog = Task {
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            if proc.isRunning { proc.terminate() }
-        }
-        let data: Data = await withCheckedContinuation { cont in
-            DispatchQueue.global(qos: .utility).async {
-                let d = outPipe.fileHandleForReading.readDataToEndOfFile()
-                proc.waitUntilExit()
-                cont.resume(returning: d)
-            }
-        }
-        watchdog.cancel()
-        IngestDebugLog.write("CODEX exit status=\(proc.terminationStatus) purpose=\(purpose)")
-        guard proc.terminationStatus == 0 else {
-            let err = String(decoding: data, as: UTF8.self)
+        // Robust timeout (SIGTERM → SIGKILL); merge stderr so failures are captured.
+        let r = await ProcessRunner.run(bin: bin, args: args, timeout: timeout, env: env, mergeStderr: true)
+        IngestDebugLog.write("CODEX exit status=\(r.status) timedOut=\(r.timedOut) purpose=\(purpose)")
+        guard r.status == 0 else {
+            let err = String(decoding: r.output, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if !err.isEmpty {
                 IngestDebugLog.write("CODEX failure output=\(String(err.prefix(700)))")
@@ -166,7 +145,7 @@ struct CodexCliClient: Sendable {
 
         let saved = (try? String(contentsOfFile: outputPath, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let stdout = String(decoding: data, as: UTF8.self)
+        let stdout = String(decoding: r.output, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let text = (saved?.isEmpty == false) ? saved! : stdout
         return text.isEmpty ? nil : text

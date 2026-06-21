@@ -100,39 +100,18 @@ struct ClaudeCodeClient: Sendable {
     private static func run(bin: String, args: [String], timeout: TimeInterval, purpose: String,
                             cwd: String? = nil) async -> String? {
         IngestDebugLog.write("CLAUDE spawn purpose=\(purpose) bin=\(bin)")
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: bin)
-        proc.arguments = args
-        if let cwd { proc.currentDirectoryURL = URL(fileURLWithPath: cwd) }
-        let outPipe = Pipe()
-        proc.standardOutput = outPipe
-        proc.standardError = FileHandle.nullDevice
-        proc.standardInput = FileHandle.nullDevice          // avoid claude's 3s stdin wait
         // Ensure claude (a Node app) can find node/itself even under the .app's
         // stripped PATH; keep the user's HOME so it finds ~/.claude credentials.
         var env = ProcessInfo.processInfo.environment
         let home = NSHomeDirectory()
         let extra = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
         env["PATH"] = (extra + [env["PATH"] ?? ""]).joined(separator: ":")
-        proc.environment = env
 
-        do { try proc.run() } catch { return nil }
-
-        let watchdog = Task {
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            if proc.isRunning { proc.terminate() }
-        }
-        let data: Data = await withCheckedContinuation { cont in
-            DispatchQueue.global(qos: .utility).async {
-                let d = outPipe.fileHandleForReading.readDataToEndOfFile()
-                proc.waitUntilExit()
-                cont.resume(returning: d)
-            }
-        }
-        watchdog.cancel()
-        IngestDebugLog.write("CLAUDE exit status=\(proc.terminationStatus) purpose=\(purpose)")
-        guard proc.terminationStatus == 0 else { return nil }
-        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Robust timeout (SIGTERM → SIGKILL) so a wedged claude can never block ingest.
+        let r = await ProcessRunner.run(bin: bin, args: args, timeout: timeout, cwd: cwd, env: env)
+        IngestDebugLog.write("CLAUDE exit status=\(r.status) timedOut=\(r.timedOut) purpose=\(purpose)")
+        guard r.status == 0 else { return nil }
+        let text = String(decoding: r.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : text
     }
 
