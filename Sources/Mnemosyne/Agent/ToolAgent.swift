@@ -190,6 +190,7 @@ struct ToolAgent: Sendable {
     • json_value(item, path) — extract a value by path (address.city, items[0].id, [2]).
     • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
     • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
+    • quick_summary(item) — instant extractive summary (top sentences, no AI model, offline).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -290,6 +291,8 @@ struct ToolAgent: Sendable {
             tool("text_stats", "Readability + length metrics for a file — word/sentence counts, estimated reading time, and a Flesch Reading Ease score with a plain-language band. Use to answer 'how long is this?' or 'how hard is it to read?'.",
                  ["item": item], required: ["item"]),
             tool("task_progress", "Measure a markdown CHECKLIST's completion in a file — counts done vs pending boxes ([x] vs [ ]) and a percent-complete. Unlike extract_action_items (only open TODOs), this reports the whole list including finished items.",
+                 ["item": item], required: ["item"]),
+            tool("quick_summary", "An INSTANT extractive summary of a file — picks its most salient existing sentences by word-frequency, no AI model (works offline, no API key). Faster/cheaper than summarize_item; use it for a quick gist or when the model is unavailable.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1744,6 +1747,17 @@ struct ToolAgent: Sendable {
                 return ("No markdown checklist items (- [ ] / - [x]) found in '\(it.title)'.", [])
             }
             return ("\(it.title) — \(report)", [])
+
+        case "quick_summary":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Summarizing \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = ExtractiveSummary.summarize(text) else {
+                return ("'\(it.title)' has no text to summarize.", [])
+            }
+            return ("Quick summary of '\(it.title)' (extractive, offline):\n\(summary)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
