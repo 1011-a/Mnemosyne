@@ -16,7 +16,7 @@ public struct OmniPrompt: View {
     var onSend: () -> Void
     var onStop: () -> Void
     var onFocusChange: (Bool) -> Void
-    @FocusState private var focused: Bool
+    @State private var focused: Bool = false   // driven by the AppKit field's begin/end editing
     @State private var dictation = Dictation()
     @State private var dictationBase = ""   // text before the current utterance
 
@@ -34,16 +34,14 @@ public struct OmniPrompt: View {
         // (with `.bottom` the placeholder dropped to the bottom edge). It still reads
         // well when the field grows to multiple lines.
         HStack(alignment: .center, spacing: DS.Space.x3) {
-            // Native single-line TextField — full IME support (Chinese/Japanese/Korean);
-            // Enter sends. (The multiline axis:.vertical variant has a known IME bug.)
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.plain)
-                .font(DS.Typo.body)
-                .foregroundStyle(DS.ColorToken.textPrimary)
-                .focused($focused)
-                .onSubmit(send)
-                .onChange(of: focusRequest) { _, _ in focused = true }
-                .onChange(of: focused) { _, f in onFocusChange(f) }
+            // AppKit-backed field so Return is IME-aware: while composing a Chinese/
+            // Japanese/Korean candidate, Return CONFIRMS it (doesn't send); only a Return
+            // with no in-progress composition sends. SwiftUI's TextField+onSubmit can't
+            // tell the difference, which broke Chinese input.
+            IMETextField(text: $text, placeholder: placeholder, focusRequest: focusRequest,
+                         onSubmit: send,
+                         onFocusChange: { f in focused = f; onFocusChange(f) })
+                .frame(height: 22)
 
             // Voice input — dictate into the field (live partial transcription).
             Button { toggleDictation() } label: {
