@@ -188,6 +188,7 @@ struct ToolAgent: Sendable {
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
     • csv_to_table(item) — render a CSV/TSV file as an aligned markdown table (first 30 rows).
     • csv_sort(item, column, …) — sort a CSV/TSV by a column (text/numeric, reverse) and show as a table.
+    • csv_select(item, columns) — pick/reorder CSV columns (SQL-style projection) and show as a table.
     • csv_to_json(item) — convert a CSV/TSV file into a JSON array of objects (header → keys).
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
@@ -322,6 +323,9 @@ struct ToolAgent: Sendable {
                   "numeric": ["type": "boolean", "description": "Sort by numeric value (default false)."],
                   "descending": ["type": "boolean", "description": "Reverse order (default false)."]],
                  required: ["item", "column"]),
+            tool("csv_select", "Pick and reorder columns from a CSV/TSV file (like SQL SELECT col1, col3) and show the result as a table. Use to narrow a wide spreadsheet to the columns you care about.",
+                 ["item": item, "columns": ["type": "string", "description": "Comma-separated column names, in the order you want, e.g. 'name, city'."]],
+                 required: ["item", "columns"]),
             tool("csv_to_json", "Convert a CSV/TSV file into a JSON array of objects (header row → keys; values stay strings). Use to reshape a spreadsheet for an API or further processing.",
                  ["item": item], required: ["item"]),
             tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
@@ -1855,6 +1859,26 @@ struct ToolAgent: Sendable {
             guard let table = MarkdownTable.tableFrom(clamped) else { return ("Couldn't render the sorted table.", []) }
             let note = sorted.count > maxRows + 1 ? "\n…(\(sorted.count - 1 - maxRows) more rows)" : ""
             return ("\(it.title) sorted by \(column):\n\(table)\(note)", [])
+
+        case "csv_select":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            guard let colsArg = arg("columns"), !colsArg.isEmpty else { return ("Missing 'columns'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Selecting columns from \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            guard let header = rows.first else { return ("'\(it.title)' has no rows.", []) }
+            let columns = colsArg.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            guard let projected = CSVProjector.select(header: header, rows: Array(rows.dropFirst()), columns: columns) else {
+                return ("One or more columns not found in '\(it.title)'. Columns: \(header.joined(separator: ", ")).", [])
+            }
+            let maxRows = 30
+            let clamped = Array(projected.prefix(maxRows + 1))
+            guard let table = MarkdownTable.tableFrom(clamped) else { return ("Couldn't render the selected columns.", []) }
+            let note = projected.count > maxRows + 1 ? "\n…(\(projected.count - 1 - maxRows) more rows)" : ""
+            return ("\(it.title) — selected columns:\n\(table)\(note)", [])
 
         case "csv_to_json":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
