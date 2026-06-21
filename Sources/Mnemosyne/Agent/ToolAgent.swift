@@ -203,6 +203,7 @@ struct ToolAgent: Sendable {
     • extract_definitions(item) — pull definition sentences (X means Y, HTTP stands for…) into a glossary.
     • extract_mentions(item) — pull #hashtags and @mentions with counts (ignores emails/headings).
     • parse_url(url) — break a URL into scheme/host/path/query params/fragment (decoded).
+    • slugify(text) — make a URL/filename-safe slug from a string (accents folded, punctuation collapsed).
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
     • make_table(data) — format rows into an aligned markdown table (first row = header).
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
@@ -336,6 +337,9 @@ struct ToolAgent: Sendable {
             tool("parse_url", "Break a URL into its parts — scheme, host, path, decoded query parameters, and fragment. Use to inspect what a link (e.g. a tracking URL) actually contains.",
                  ["url": ["type": "string", "description": "The URL to parse, e.g. 'https://example.com/p?utm_source=x'."]],
                  required: ["url"]),
+            tool("slugify", "Turn a string into a URL/filename-safe slug — 'My Great Note!' → 'my-great-note'. Folds accents to ASCII and collapses punctuation. Use for anchors, filenames, or artifact names.",
+                 ["text": ["type": "string", "description": "The text to slugify, e.g. a title."]],
+                 required: ["text"]),
             tool("bar_chart", "Render a horizontal ASCII bar chart to VISUALIZE numbers in the chat — pass 'label: value' pairs (comma- or newline-separated), e.g. 'Jan: 8, Feb: 5, Mar: 3'. Great for showing column stats, trends, or tallies you computed.",
                  ["data": ["type": "string", "description": "Label:value pairs, comma- or newline-separated, e.g. 'Q1: 12, Q2: 19'. Plain numbers only (no thousands separators)."]],
                  required: ["data"]),
@@ -1973,6 +1977,12 @@ struct ToolAgent: Sendable {
                 return ("'\(url)' doesn't look like a valid URL.", [])
             }
             return ("URL parts:\n\(summary)", [])
+
+        case "slugify":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let slug = Slugifier.slugify(text)
+            guard !slug.isEmpty else { return ("'\(text)' has no slug-able characters (try a title with letters/digits).", []) }
+            return (slug, [])
 
         case "make_table":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (rows of cells).", []) }
