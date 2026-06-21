@@ -177,6 +177,7 @@ struct ToolAgent: Sendable {
     • timeline(item) — list a file's dates in chronological order (a contract/project/history timeline).
     • extract_figures(item) — pull monetary amounts and percentages from a file (invoices, budgets, reports).
     • extract_phone_numbers(item) — pull phone numbers from a file (contacts), alongside extract_emails.
+    • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
     • find_by_date(start,end,field) — list files whose created/modified date falls in an explicit range.
@@ -238,6 +239,8 @@ struct ToolAgent: Sendable {
             tool("extract_emails", "Pull all EMAIL addresses out of a file — for collecting contacts.",
                  ["item": item], required: ["item"]),
             tool("extract_phone_numbers", "Pull all PHONE NUMBERS out of a file (international, US-parens, or separated forms) — for collecting contacts, alongside extract_emails.",
+                 ["item": item], required: ["item"]),
+            tool("extract_contacts", "One-call CONTACTS roll-up for a file: the people, emails, and phone numbers found, grouped together. Use for 'who do I contact in this file' instead of calling entity_extract + extract_emails + extract_phone_numbers separately.",
                  ["item": item], required: ["item"]),
             tool("extract_action_items", "Pull actionable TASKS / TODOs / commitments out of a file — checkbox items, TODO/FIXME/ACTION markers, and 'need to / must / follow up / remember to' phrasing. Use to turn notes into follow-ups (then optionally add_reminder for each).",
                  ["item": item], required: ["item"]),
@@ -1362,6 +1365,20 @@ struct ToolAgent: Sendable {
             let phones = PhoneExtractor.extract(text)
             guard !phones.isEmpty else { return ("No phone numbers found in '\(it.title)'.", []) }
             return ("\(phones.count) phone number(s) in '\(it.title)': " + phones.joined(separator: ", "), [])
+
+        case "extract_contacts":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Rounding up contacts in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let people = EntityExtractor.extract(text).filter { $0.kind == .person }.map(\.name)
+            let emails = EmailAddressExtractor.extract(text)
+            let phones = PhoneExtractor.extract(text)
+            guard let rollup = ContactRollup.format(people: people, emails: emails, phones: phones) else {
+                return ("No contacts (people, emails, or phone numbers) found in '\(it.title)'.", [])
+            }
+            return ("Contacts in '\(it.title)':\n" + rollup, [])
 
         case "extract_figures":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
