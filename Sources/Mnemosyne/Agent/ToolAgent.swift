@@ -209,6 +209,7 @@ struct ToolAgent: Sendable {
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
+    • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -364,6 +365,12 @@ struct ToolAgent: Sendable {
                  ["text": ["type": "string", "description": "The text to convert."],
                   "mode": ["type": "string", "enum": ["upper", "lower", "title", "sentence"], "description": "Target case."]],
                  required: ["text", "mode"]),
+            tool("replace_text", "Find and replace text within a string — replaces every occurrence of 'find' with 'replace' and reports the count. Set case_insensitive to true to ignore case.",
+                 ["text": ["type": "string", "description": "The text to transform."],
+                  "find": ["type": "string", "description": "The substring to find."],
+                  "replace": ["type": "string", "description": "The replacement (may be empty to delete)."],
+                  "case_insensitive": ["type": "boolean", "description": "Ignore case when matching (default false)."]],
+                 required: ["text", "find", "replace"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2055,6 +2062,15 @@ struct ToolAgent: Sendable {
                 return ("Unknown case mode. Use 'upper', 'lower', 'title', or 'sentence'.", [])
             }
             return (result, [])
+
+        case "replace_text":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let find = arg("find"), !find.isEmpty else { return ("Missing 'find'.", []) }
+            let replacement = arg("replace") ?? ""
+            let ci = (arg("case_insensitive") ?? "false").lowercased() == "true"
+            let (out, count) = TextReplace.replace(text, find: find, with: replacement, caseInsensitive: ci)
+            guard count > 0 else { return ("No occurrences of '\(find)' found — text unchanged.", []) }
+            return ("\(out)\n\n(\(count) replacement\(count == 1 ? "" : "s"))", [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
