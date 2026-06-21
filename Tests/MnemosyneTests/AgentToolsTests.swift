@@ -466,6 +466,28 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testBriefingComposesSectionsAndOmitsEmpties() {
+        let b = ToolAgent.briefing(totalItems: 120, windowDays: 7,
+                                   changedRecently: ["a.md", "b.pdf"],
+                                   dueReminders: ["pay invoice"],
+                                   untagged: 5)
+        XCTAssertTrue(b.contains("Library: 120 items"))
+        XCTAssertTrue(b.contains("Changed recently: 2 — a.md, b.pdf"))
+        XCTAssertTrue(b.contains("Due soon / overdue: 1 — pay invoice"))
+        XCTAssertTrue(b.contains("5 untagged files"))
+
+        // Empty sections are omitted (no due line, no untagged line), with a clean "no changes".
+        let quiet = ToolAgent.briefing(totalItems: 10, windowDays: 7,
+                                       changedRecently: [], dueReminders: [], untagged: 0)
+        XCTAssertTrue(quiet.contains("No files changed"))
+        XCTAssertFalse(quiet.contains("Due soon"))
+        XCTAssertFalse(quiet.contains("untagged"))
+
+        XCTAssertEqual(ToolAgent.briefing(totalItems: 0, windowDays: 7, changedRecently: [],
+                                          dueReminders: [], untagged: 0),
+                       "Your library is empty — ingest some files to begin.")
+    }
+
     func testNormalizedTitleKeyCollapsesVersionsAndCopies() {
         let k = ToolAgent.normalizedTitleKey
         XCTAssertEqual(k("Report Final v2.pdf"), "report")

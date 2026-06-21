@@ -187,6 +187,7 @@ struct ToolAgent: Sendable {
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
     • library_health / find_duplicates / find_similar_titles / merge_tags / auto_label_untagged — diagnose and tidy the library.
     • library_languages — break the whole library down by language (e.g. English vs Chinese share).
+    • catch_me_up — a proactive briefing: recent changes, due/overdue reminders, and tidy-up nudges.
     • suggest_connections(item) — find related-but-unlabelled-together files to propose linking (autonomous).
     • suggest_tags_from_neighbors(item) — propose labels from what the file's most similar files are tagged.
     Work in three phases — PLAN, ACT, then answer:
@@ -280,6 +281,8 @@ struct ToolAgent: Sendable {
             tool("library_themes", "Surface the DOMINANT TOPICS across the whole library (terms appearing in many files) — for 'what are the main themes in my knowledge' or to suggest what to explore.", [:]),
             tool("library_languages", "Break down the WHOLE library by LANGUAGE — what share of files are English vs Chinese vs … — for a multilingual collection. On-device detection.",
                  ["limit": ["type": "integer", "description": "Max files to sample (default 300)."]]),
+            tool("catch_me_up", "A proactive BRIEFING: what changed recently, which reminders are due/overdue, and any tidy-up nudges — answer 'catch me up', 'what's new', 'what should I look at'.",
+                 ["days": ["type": "integer", "description": "Look-back/look-ahead window in days (default 7)."]]),
             tool("find_by_kind", "List files of a given KIND/type — pdf, image, markdown, text, code, webpage, email, word.",
                  ["kind": ["type": "string", "description": "e.g. 'pdf', 'image', 'markdown'."]], required: ["kind"]),
             tool("add_tag", "Add a label to a file.", ["item": item, "tag": tag], required: ["item", "tag"]),
@@ -859,6 +862,32 @@ struct ToolAgent: Sendable {
         }.sorted { when($0) > when($1) }
     }
 
+    /// Compose an autonomous "catch me up" briefing from the library's signals — recent
+    /// changes, due/overdue reminders, and an untagged-tidy nudge. Sections with nothing
+    /// to report are omitted (the library line always shows). Pure → unit-testable.
+    static func briefing(totalItems: Int, windowDays: Int, changedRecently: [String],
+                         dueReminders: [String], untagged: Int) -> String {
+        guard totalItems > 0 else { return "Your library is empty — ingest some files to begin." }
+        func sample(_ xs: [String], _ n: Int = 5) -> String {
+            let shown = xs.prefix(n).joined(separator: ", ")
+            return xs.count > n ? "\(shown), +\(xs.count - n) more" : shown
+        }
+        var lines = ["Here's your catch-up (last \(windowDays) day\(windowDays == 1 ? "" : "s")):",
+                     "• Library: \(totalItems) item\(totalItems == 1 ? "" : "s")."]
+        if changedRecently.isEmpty {
+            lines.append("• No files changed in this window.")
+        } else {
+            lines.append("• Changed recently: \(changedRecently.count) — \(sample(changedRecently)).")
+        }
+        if !dueReminders.isEmpty {
+            lines.append("• Due soon / overdue: \(dueReminders.count) — \(sample(dueReminders)).")
+        }
+        if untagged > 0 {
+            lines.append("• \(untagged) untagged file\(untagged == 1 ? "" : "s") — run auto_label_untagged to tidy up.")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// Aggregate per-item language codes into a distribution sorted by count (desc),
     /// ties broken by code (asc). Empty codes are ignored. Pure → unit-testable; backs
     /// the `library_languages` tool.
@@ -1233,6 +1262,18 @@ struct ToolAgent: Sendable {
                 return "\(LanguageDetector.name(for: d.language)) \(d.count) (\(pct)%)"
             }
             return ("Languages across \(total) sampled file(s): " + parts.joined(separator: ", "), [])
+
+        case "catch_me_up":
+            onStatus("Putting together your briefing…")
+            let days = Int(arg("days") ?? "") ?? 7
+            let now = Date()
+            let items = (try? await store.allItems()) ?? []
+            let changed = Self.changedSince(items, Self.changeThreshold(days: days, since: nil, now: now)).map(\.title)
+            let due = ReminderStore.dueSoon(reminders.all(), within: days, now: now).map(\.title)
+            let byItem = (try? await store.tagsByItem()) ?? [:]
+            let untagged = items.filter { (byItem[$0.id] ?? []).isEmpty }.count
+            return (Self.briefing(totalItems: items.count, windowDays: days,
+                                  changedRecently: changed, dueReminders: due, untagged: untagged), [])
 
         case "library_stats":
             onStatus("Counting the knowledge base…")
