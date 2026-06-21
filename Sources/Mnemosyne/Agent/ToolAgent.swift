@@ -182,6 +182,7 @@ struct ToolAgent: Sendable {
     • extract_acronyms(item) — pull acronyms (+ expansions when present) to build a glossary.
     • extract_code_blocks(item) — pull fenced code snippets (with language) from a file.
     • document_outline(item) — the file's exact markdown heading table-of-contents, instant + free.
+    • find_in_item(item, query) — grep one file for a phrase; returns matching lines with line numbers.
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
     • csv_to_table(item) — render a CSV/TSV file as an aligned markdown table (first 30 rows).
@@ -271,6 +272,9 @@ struct ToolAgent: Sendable {
                  ["item": item], required: ["item"]),
             tool("document_outline", "The file's EXACT markdown heading hierarchy as an indented table of contents — instant and free (no model). Use to navigate a long markdown doc; complements outline_item (which summarizes).",
                  ["item": item], required: ["item"]),
+            tool("find_in_item", "Find the lines in ONE file that contain a phrase (case-insensitive) — a within-document grep with line numbers. Use for 'where does this note mention X?' (search_knowledge searches across files instead).",
+                 ["item": item, "query": ["type": "string", "description": "The phrase/substring to find within the file."]],
+                 required: ["item", "query"]),
             tool("keyword_extract", "Surface a file's most salient TERMS by frequency (a quick topical fingerprint) — useful to suggest labels or grasp what a document is about at a glance.",
                  ["item": item], required: ["item"]),
             tool("extract_links", "Pull all the web LINKS (http/https URLs) out of a file — for collecting references or following sources.",
@@ -1601,6 +1605,18 @@ struct ToolAgent: Sendable {
             }
             let n = HeadingExtractor.extract(full).count
             return ("Table of contents for '\(it.title)' (\(n) heading\(n == 1 ? "" : "s")):\n\(outline)", [])
+
+        case "find_in_item":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            guard let query = arg("query"), !query.trimmingCharacters(in: .whitespaces).isEmpty else { return ("Missing 'query'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Searching \(it.title) for ‘\(query)’…")
+            let full = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = LineGrep.summary(full, query: query) else {
+                return ("No lines in '\(it.title)' contain '\(query)'.", [])
+            }
+            return ("In '\(it.title)':\n\(summary)", [])
 
         case "keyword_extract":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
