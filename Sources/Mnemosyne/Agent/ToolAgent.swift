@@ -187,6 +187,7 @@ struct ToolAgent: Sendable {
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
     • csv_to_table(item) — render a CSV/TSV file as an aligned markdown table (first 30 rows).
+    • csv_sort(item, column, …) — sort a CSV/TSV by a column (text/numeric, reverse) and show as a table.
     • csv_to_json(item) — convert a CSV/TSV file into a JSON array of objects (header → keys).
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
@@ -316,6 +317,11 @@ struct ToolAgent: Sendable {
                  ["item": item], required: ["item"]),
             tool("csv_to_table", "Render a CSV/TSV file as a clean aligned MARKDOWN table for display in the chat (first N rows). Use when the user wants to SEE a spreadsheet, not just its stats.",
                  ["item": item], required: ["item"]),
+            tool("csv_sort", "Sort a CSV/TSV file by a column and show the result as a table. Set numeric=true to sort by number, descending=true to reverse. Call inspect_csv first to see the column names.",
+                 ["item": item, "column": ["type": "string", "description": "The column header to sort by (case-insensitive)."],
+                  "numeric": ["type": "boolean", "description": "Sort by numeric value (default false)."],
+                  "descending": ["type": "boolean", "description": "Reverse order (default false)."]],
+                 required: ["item", "column"]),
             tool("csv_to_json", "Convert a CSV/TSV file into a JSON array of objects (header row → keys; values stay strings). Use to reshape a spreadsheet for an API or further processing.",
                  ["item": item], required: ["item"]),
             tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
@@ -1828,6 +1834,27 @@ struct ToolAgent: Sendable {
             }
             let note = rows.count > maxRows + 1 ? "\n…(\(rows.count - 1 - maxRows) more rows)" : ""
             return ("\(it.title):\n\(table)\(note)", [])
+
+        case "csv_sort":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            guard let column = arg("column"), !column.isEmpty else { return ("Missing 'column'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Sorting \(it.title) by \(column)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            guard let header = rows.first else { return ("'\(it.title)' has no rows to sort.", []) }
+            func flag(_ k: String) -> Bool { (arg(k) ?? "false").lowercased() == "true" }
+            guard let sorted = CSVSorter.sort(header: header, rows: Array(rows.dropFirst()), column: column,
+                                              descending: flag("descending"), numeric: flag("numeric")) else {
+                return ("Column '\(column)' not found in '\(it.title)'. Columns: \(header.joined(separator: ", ")).", [])
+            }
+            let maxRows = 30
+            let clamped = Array(sorted.prefix(maxRows + 1))
+            guard let table = MarkdownTable.tableFrom(clamped) else { return ("Couldn't render the sorted table.", []) }
+            let note = sorted.count > maxRows + 1 ? "\n…(\(sorted.count - 1 - maxRows) more rows)" : ""
+            return ("\(it.title) sorted by \(column):\n\(table)\(note)", [])
 
         case "csv_to_json":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
