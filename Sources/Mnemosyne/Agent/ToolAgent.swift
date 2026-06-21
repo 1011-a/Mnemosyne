@@ -192,6 +192,7 @@ struct ToolAgent: Sendable {
     • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
     • quick_summary(item) — instant extractive summary (top sentences, no AI model, offline).
     • extract_key_values(item) — pull 'Key: Value' metadata pairs (Status: Done, Due: Friday).
+    • redact_pii(item) — masked, shareable copy: emails/phones/SSNs → [email]/[phone]/[ssn].
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -296,6 +297,8 @@ struct ToolAgent: Sendable {
             tool("quick_summary", "An INSTANT extractive summary of a file — picks its most salient existing sentences by word-frequency, no AI model (works offline, no API key). Faster/cheaper than summarize_item; use it for a quick gist or when the model is unavailable.",
                  ["item": item], required: ["item"]),
             tool("extract_key_values", "Pull 'Key: Value' METADATA pairs from a file — note headers / front-matter like 'Status: Done', 'Due: Friday', 'Owner: Sam'. Excludes times and URLs. Use to read a note's structured fields.",
+                 ["item": item], required: ["item"]),
+            tool("redact_pii", "Produce a SHAREABLE copy of a file with personal identifiers masked — emails, phone numbers, and US SSNs become [email]/[phone]/[ssn]. Reports what was redacted. Use before exporting or quoting a note externally.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1772,6 +1775,17 @@ struct ToolAgent: Sendable {
                 return ("No 'Key: Value' metadata fields found in '\(it.title)'.", [])
             }
             return ("Fields in '\(it.title)':\n\(summary)", [])
+
+        case "redact_pii":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Redacting \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let report = Redactor.report(text) else {
+                return ("No emails, phone numbers, or SSNs detected in '\(it.title)' — nothing to redact.", [])
+            }
+            return ("\(it.title) (redacted) — \(report)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
