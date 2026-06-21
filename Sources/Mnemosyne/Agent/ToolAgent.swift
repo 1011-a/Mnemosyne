@@ -737,9 +737,10 @@ struct ToolAgent: Sendable {
     }
 
     /// System prompt for the translate tool. Pure → testable.
+    /// The translation system prompt — single-sourced in Fathom so the wording stays in
+    /// one place. The translate / translate_item handlers still call DeepSeek directly.
     static func translatePrompt(to language: String) -> String {
-        "You are a precise translator. Translate the user's text into \(language). Preserve meaning, tone, and " +
-        "formatting (lists, line breaks). Output ONLY the translation — no preamble, notes, or quotes."
+        Fathom.Translation.systemPrompt(to: language)
     }
 
     /// Human-readable byte size: "512 B", "1.5 KB", "3.2 MB". Pure → testable.
