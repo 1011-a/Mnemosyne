@@ -1,21 +1,21 @@
 import XCTest
-import DeepSeekOrchestrator
+import Fathom
 @testable import Mnemosyne
 
 /// Proves the Ask tab's agent ACT loop drives its model calls through the
-/// `DeepSeekOrchestrator` SDK — by injecting a scripted SDK `LLMClient` (no network)
+/// the Fathom SDK — by injecting a scripted SDK `LLMClient` (no network)
 /// and confirming the loop multi-rounds, threads the tool call back, and finishes.
 final class AgentSDKLoopTests: XCTestCase {
 
     /// A scripted SDK client: returns queued completions in order, counting calls.
     /// The agent loop calls `complete` strictly sequentially (await per round), so a
     /// plain counter is safe under `@unchecked Sendable` — no lock needed.
-    final class MockSDKClient: DeepSeekOrchestrator.LLMClient, @unchecked Sendable {
-        private var queue: [DeepSeekOrchestrator.Completion]
+    final class MockSDKClient: Fathom.LLMClient, @unchecked Sendable {
+        private var queue: [Fathom.Completion]
         private(set) var invocations = 0
-        init(_ q: [DeepSeekOrchestrator.Completion]) { queue = q }
-        func complete(messages: [DeepSeekOrchestrator.ChatMessage],
-                      tools: [[String: Any]]) async throws -> DeepSeekOrchestrator.Completion {
+        init(_ q: [Fathom.Completion]) { queue = q }
+        func complete(messages: [Fathom.ChatMessage],
+                      tools: [[String: Any]]) async throws -> Fathom.Completion {
             invocations += 1
             return queue.isEmpty ? .init(content: "done") : queue.removeFirst()
         }

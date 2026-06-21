@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import DeepSeekOrchestrator
+import Fathom
 
 /// Agentic brain: instead of one-shot RAG, DeepSeek drives a tool-calling loop.
 /// It can call `search_knowledge` as many times as it needs (multi-hop) to
@@ -30,10 +30,10 @@ struct ToolAgent: Sendable {
     /// Override the LLM transport for the tool-calling loop. nil ⇒ the loop talks to
     /// DeepSeek through `AgentLLMClient` (the SDK). Tests inject a scripted mock here so
     /// the agentic loop runs deterministically, offline.
-    var llmOverride: (any DeepSeekOrchestrator.LLMClient)? = nil
+    var llmOverride: (any Fathom.LLMClient)? = nil
 
     /// The LLM client the ACT loop calls each round (the SDK transport, by default).
-    private var llm: any DeepSeekOrchestrator.LLMClient {
+    private var llm: any Fathom.LLMClient {
         llmOverride ?? AgentLLMClient(deepSeek: deepSeek, temperature: temperature)
     }
 
@@ -477,7 +477,7 @@ struct ToolAgent: Sendable {
         // whether the agent finished, gave up on a dead-end, or hit its step budget.
         var finish: FinishReason = .roundLimit
         for _ in 0..<rounds {
-            // The model call for the ACT loop now flows through the DeepSeekOrchestrator
+            // The model call for the ACT loop now flows through the Fathom
             // SDK's LLMClient — one place owns the wire format, and tests inject a mock.
             let completion = try await llm.complete(
                 messages: AgentLLMClient.messages(from: convo), tools: Self.tools())
