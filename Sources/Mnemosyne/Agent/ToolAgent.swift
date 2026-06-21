@@ -196,6 +196,7 @@ struct ToolAgent: Sendable {
     • scan_secrets(item) — detect leaked credentials (API keys, tokens, private keys), masked.
     • key_phrases(item) — recurring multi-word topics (bigrams/trigrams), richer than keyword_extract.
     • extract_amounts(item) — pull monetary amounts ($, €, USD…) and total them per currency.
+    • extract_definitions(item) — pull definition sentences (X means Y, HTTP stands for…) into a glossary.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -308,6 +309,8 @@ struct ToolAgent: Sendable {
             tool("key_phrases", "Extract the recurring multi-word KEY PHRASES (topics) from a file — e.g. 'machine learning', 'quarterly report'. A richer topical fingerprint than keyword_extract (single words). Use to grasp or label what a document is about.",
                  ["item": item], required: ["item"]),
             tool("extract_amounts", "Pull MONETARY amounts from a file (receipts, invoices, expense notes) — $1,200.50, €30, 45 USD — and total them per currency. Use to answer 'how much in total?' or list the charges in a document.",
+                 ["item": item], required: ["item"]),
+            tool("extract_definitions", "Pull DEFINITION sentences from a file ('X means Y', 'HTTP stands for…', 'a vector is an…') to build a glossary. Offline and pure (define_term does a single model lookup instead).",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1828,6 +1831,17 @@ struct ToolAgent: Sendable {
                 return ("No monetary amounts found in '\(it.title)'.", [])
             }
             return ("'\(it.title)' — \(summary)", [])
+
+        case "extract_definitions":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding definitions in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = DefinitionExtractor.summary(text) else {
+                return ("No definition sentences found in '\(it.title)'.", [])
+            }
+            return ("Glossary from '\(it.title)':\n\(summary)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
