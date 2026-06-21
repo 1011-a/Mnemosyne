@@ -191,6 +191,7 @@ struct ToolAgent: Sendable {
     • catch_me_up — a proactive briefing: recent changes, due/overdue reminders, and tidy-up nudges.
     • most_cited — the files you reference most in conversations (your go-to sources).
     • save_search / list_saved_searches / run_saved_search / delete_saved_search — name and recall searches.
+    • search_conversations(query) — find past chats that discussed a topic ("did we talk about X before").
     • suggest_connections(item) — find related-but-unlabelled-together files to propose linking (autonomous).
     • suggest_tags_from_neighbors(item) — propose labels from what the file's most similar files are tagged.
     Work in three phases — PLAN, ACT, then answer:
@@ -277,6 +278,9 @@ struct ToolAgent: Sendable {
                   "query": ["type": "string", "description": "The search query to save."]],
                  required: ["name", "query"]),
             tool("list_saved_searches", "List the user's saved searches (their names and queries).", [:]),
+            tool("search_conversations", "Search the user's PAST CONVERSATIONS (chat titles and messages) — 'did we talk about X before', 'find that chat about Y'. Returns matching threads with dates.",
+                 ["query": ["type": "string", "description": "What to look for across past chats."]],
+                 required: ["query"]),
             tool("run_saved_search", "Run a previously SAVED search by its name and return the matching files (cited).",
                  ["search": ["type": "string", "description": "Name (or part) of the saved search to run."]],
                  required: ["search"]),
@@ -1257,6 +1261,18 @@ struct ToolAgent: Sendable {
             onStatus("Deleting saved search '\(s.name)'…")
             do { try await store.deleteSavedSearch(id: s.id) } catch { return ("Couldn't delete it.", []) }
             return ("Deleted saved search '\(s.name)'.", [])
+
+        case "search_conversations":
+            guard let q = arg("query")?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty
+            else { return ("Missing 'query'.", []) }
+            onStatus("Searching past conversations for '\(q)'…")
+            let threads = ((try? await store.searchThreads(query: q)) ?? []).prefix(10)
+            guard !threads.isEmpty else { return ("No past conversations mention '\(q)'.", []) }
+            let list = threads.map { t -> String in
+                let title = t.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                return "• \(title.isEmpty ? "(untitled)" : title) — \(Self.isoDay(t.updatedAt))\(t.pinned ? " 📌" : "")"
+            }.joined(separator: "\n")
+            return ("\(threads.count) past conversation(s) mentioning '\(q)':\n\(list)", [])
 
         case "tag_stats":
             onStatus("Analyzing labels…")

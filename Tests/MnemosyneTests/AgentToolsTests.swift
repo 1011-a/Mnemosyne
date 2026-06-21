@@ -491,6 +491,16 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertFalse(ToolAgent.mutationTools.contains("most_cited"), "reading citation counts is read-only")
     }
 
+    func testSearchConversationsToolRegisteredReadOnly() {
+        let tools = ToolAgent.tools()
+        let names = tools.compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
+        XCTAssertTrue(names.contains("search_conversations"), "search_conversations is exposed")
+        XCTAssertFalse(ToolAgent.mutationTools.contains("search_conversations"), "searching past chats is read-only")
+        let schema = tools.first { ($0["function"] as? [String: Any])?["name"] as? String == "search_conversations" }
+        let params = (schema?["function"] as? [String: Any])?["parameters"] as? [String: Any]
+        XCTAssertEqual(params?["required"] as? [String], ["query"])
+    }
+
     func testSavedSearchToolsRegisteredAndGated() {
         let names = ToolAgent.tools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
         for t in ["save_search", "list_saved_searches", "run_saved_search", "delete_saved_search"] {
