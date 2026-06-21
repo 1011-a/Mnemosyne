@@ -190,6 +190,7 @@ struct ToolAgent: Sendable {
     • library_languages — break the whole library down by language (e.g. English vs Chinese share).
     • catch_me_up — a proactive briefing: recent changes, due/overdue reminders, and tidy-up nudges.
     • most_cited — the files you reference most in conversations (your go-to sources).
+    • activity_trend — file activity over the last N days (total, busiest day, recent pace).
     • save_search / list_saved_searches / run_saved_search / delete_saved_search — name and recall searches.
     • search_conversations(query) — find past chats that discussed a topic ("did we talk about X before").
     • suggest_connections(item) — find related-but-unlabelled-together files to propose linking (autonomous).
@@ -294,6 +295,8 @@ struct ToolAgent: Sendable {
             tool("library_stats", "Totals (items, chunks) and a breakdown of the knowledge base by file kind.", [:]),
             tool("most_cited", "List the files you REFERENCE MOST in conversations (by how often they've been cited) — your go-to / most-relied-upon sources.",
                  ["limit": ["type": "integer", "description": "How many to list (default 5)."]]),
+            tool("activity_trend", "Summarize file ACTIVITY over the last N days — total changes, the busiest day, and recent pace. Use for 'how active have I been', 'when did I add the most'.",
+                 ["days": ["type": "integer", "description": "Window in days (default 30)."]]),
             tool("summarize_library", "A one-call DIGEST of the whole knowledge base — totals, kind breakdown, top labels, untagged count, and the newest files. Use for 'what's in my library / give me an overview' or before suggesting what to do next.", [:]),
             tool("library_health", "A one-call HEALTH CHECK — label coverage, untagged count, near-duplicate labels — with concrete cleanup recommendations (auto_label_untagged, merge_tags). Use for 'how organized is my library / what should I clean up'.", [:]),
             tool("find_duplicates", "Find sets of files with IDENTICAL content (exact duplicates) — useful before deleting redundant items.", [:]),
@@ -882,6 +885,22 @@ struct ToolAgent: Sendable {
         }.sorted { when($0) > when($1) }
     }
 
+    /// Summarize per-day file-activity buckets (oldest→newest, newest = last index = today)
+    /// into a readable trend: total changes, the busiest day, and the last-7-day total.
+    /// Pure → unit-testable.
+    static func activitySummary(_ buckets: [Int]) -> String {
+        let total = buckets.reduce(0, +)
+        guard total > 0, !buckets.isEmpty else { return "No file activity in this window." }
+        let days = buckets.count
+        var peak = 0
+        for (i, v) in buckets.enumerated() where v > buckets[peak] { peak = i }
+        let peakAgo = days - 1 - peak
+        func ago(_ d: Int) -> String { d == 0 ? "today" : (d == 1 ? "yesterday" : "\(d) days ago") }
+        let last7 = buckets.suffix(7).reduce(0, +)
+        return "\(total) file change\(total == 1 ? "" : "s") over \(days) day\(days == 1 ? "" : "s"). " +
+               "Busiest: \(buckets[peak]) on \(ago(peakAgo)). Last 7 days: \(last7)."
+    }
+
     /// Resolve a saved-search reference to one entry: exact name (case-insensitive) wins,
     /// else a unique substring match. Returns nil if nothing or several match ambiguously.
     /// Pure → unit-testable.
@@ -1375,6 +1394,12 @@ struct ToolAgent: Sendable {
             guard !top.isEmpty else { return ("No files have been cited yet — ask a question and I'll start tracking which sources you rely on.", []) }
             let list = top.map { "\($0.item.title) (\($0.count) citation\($0.count == 1 ? "" : "s"))" }.joined(separator: "; ")
             return ("Most-referenced files: \(list)", [])
+
+        case "activity_trend":
+            onStatus("Measuring activity…")
+            let days = Swift.min(Swift.max(Int(arg("days") ?? "") ?? 30, 1), 90)
+            let buckets = (try? await store.ingestActivity(days: days)) ?? []
+            return ("Activity (last \(days) days): " + Self.activitySummary(buckets), [])
 
         case "summarize_library":
             onStatus("Summarizing your library…")

@@ -485,6 +485,24 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertNil(ToolAgent.matchSavedSearch("report", in: amb), "ambiguous substring is not auto-resolved")
     }
 
+    func testActivitySummaryTotalsPeakAndRecent() {
+        // 10 days, oldest→newest. newest (today) = last index.
+        let buckets = [0, 0, 3, 1, 0, 0, 5, 2, 0, 1]   // total 12; peak 5 at index 6 → 3 days ago
+        let s = ToolAgent.activitySummary(buckets)
+        XCTAssertTrue(s.contains("12 file changes over 10 days"), s)
+        XCTAssertTrue(s.contains("Busiest: 5 on 3 days ago"), s)
+        XCTAssertTrue(s.contains("Last 7 days: 9"), s)   // suffix(7) = [1,0,0,5,2,0,1] = 9
+    }
+
+    func testActivitySummaryEdgeCases() {
+        XCTAssertEqual(ToolAgent.activitySummary([]), "No file activity in this window.")
+        XCTAssertEqual(ToolAgent.activitySummary([0, 0, 0]), "No file activity in this window.")
+        // "today" / singular wording.
+        let today = ToolAgent.activitySummary([0, 0, 1])   // 1 change, peak today
+        XCTAssertTrue(today.contains("1 file change over 3 days"), today)
+        XCTAssertTrue(today.contains("on today"), today)
+    }
+
     func testMostCitedToolRegisteredReadOnly() {
         let names = ToolAgent.tools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
         XCTAssertTrue(names.contains("most_cited"), "most_cited is exposed")
