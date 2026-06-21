@@ -207,6 +207,7 @@ struct ToolAgent: Sendable {
     • slugify(text) — make a URL/filename-safe slug from a string (accents folded, punctuation collapsed).
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
+    • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -355,6 +356,9 @@ struct ToolAgent: Sendable {
                  ["text": ["type": "string", "description": "The text to encode, or the base64 to decode."],
                   "mode": ["type": "string", "enum": ["encode", "decode"], "description": "encode (default) or decode."]],
                  required: ["text"]),
+            tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
+                 ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
+                 required: ["data"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2032,6 +2036,13 @@ struct ToolAgent: Sendable {
                 return (decoded, [])
             }
             return (Base64Util.encode(text), [])
+
+        case "make_checklist":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of items).", []) }
+            guard let checklist = ChecklistBuilder.build(data) else {
+                return ("No items to turn into a checklist. Pass items one per line.", [])
+            }
+            return (checklist, [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
