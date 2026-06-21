@@ -439,6 +439,34 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testTagsFromNeighborsRanksByRankDecayedVotes() {
+        // Neighbors ordered most-similar-first. Closer neighbors weigh more (1/(rank+1)).
+        let neighbors = [
+            ["swift", "ios"],     // rank 0 → weight 1.0
+            ["swift"],            // rank 1 → weight 0.5
+            ["android", "ios"],   // rank 2 → weight 0.333…
+        ]
+        // swift = 1.0 + 0.5 = 1.5 ; ios = 1.0 + 0.333 = 1.333 ; android = 0.333
+        let out = ToolAgent.tagsFromNeighbors(existing: [], neighborTags: neighbors)
+        XCTAssertEqual(out, ["swift", "ios", "android"], "ordered by rank-decayed vote weight")
+    }
+
+    func testTagsFromNeighborsExcludesExistingAndIsCaseInsensitive() {
+        let neighbors = [["Swift", "iOS"], ["swift", "metal"]]
+        // 'swift' already on the item (different case) ⇒ excluded.
+        let out = ToolAgent.tagsFromNeighbors(existing: ["SWIFT"], neighborTags: neighbors)
+        XCTAssertFalse(out.contains { $0.lowercased() == "swift" }, "existing tag excluded case-insensitively")
+        XCTAssertEqual(out.first, "iOS", "highest remaining vote; first-seen spelling preserved")
+        XCTAssertTrue(out.contains("metal"))
+    }
+
+    func testTagsFromNeighborsLimitAndEmpty() {
+        let many = [["a", "b", "c", "d", "e", "f", "g"]]
+        XCTAssertEqual(ToolAgent.tagsFromNeighbors(existing: [], neighborTags: many, limit: 3).count, 3)
+        XCTAssertTrue(ToolAgent.tagsFromNeighbors(existing: [], neighborTags: []).isEmpty)
+        XCTAssertTrue(ToolAgent.tagsFromNeighbors(existing: [], neighborTags: [[], []]).isEmpty, "untagged neighbors ⇒ nothing")
+    }
+
     func testSuggestedConnectionsSurfacesUnlinkedRelated() {
         let source: Set<String> = ["machine-learning", "research"]
         let candidates: [(id: String, title: String, tags: Set<String>)] = [

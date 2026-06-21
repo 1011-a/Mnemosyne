@@ -168,6 +168,7 @@ struct ToolAgent: Sendable {
     • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
     • library_languages — break the whole library down by language (e.g. English vs Chinese share).
     • suggest_connections(item) — find related-but-unlabelled-together files to propose linking (autonomous).
+    • suggest_tags_from_neighbors(item) — propose labels from what the file's most similar files are tagged.
     Work in three phases — PLAN, ACT, then answer:
     1. PLAN: decide if the request is a QUESTION (needs evidence) or an ACTION (manage the KB), and \
        which tool(s) it needs.
@@ -231,6 +232,8 @@ struct ToolAgent: Sendable {
             tool("suggest_labels", "Propose 3-5 LABELS for a file from its salient terms, reusing existing library labels where they fit. Previews by default; pass apply=true to actually add them.",
                  ["item": item, "apply": ["type": "boolean", "description": "Set true to ADD the suggested labels. Omit/false = preview only."]],
                  required: ["item"]),
+            tool("suggest_tags_from_neighbors", "Propose LABELS for a file from what its most SIMILAR files are already tagged (a collaborative signal) — complements suggest_labels (which uses the file's own terms). Best for tagging a new file consistently with the rest of the library. Preview; apply with add_tag.",
+                 ["item": item], required: ["item"]),
             tool("auto_label_untagged", "BATCH organize: find untagged files and propose labels for EACH from its content (reusing existing labels). Previews by default; pass apply=true to label them all.",
                  ["limit": ["type": "integer", "description": "Max files to process (default 10)."],
                   "apply": ["type": "boolean", "description": "Set true to APPLY labels to all proposed files. Omit/false = preview."]]),
@@ -806,6 +809,36 @@ struct ToolAgent: Sendable {
     /// new citations, and changed nothing. Two such rounds running ⇒ force an answer.
     static func isStall(freshCalls: Int, newCitations: Int, didMutate: Bool) -> Bool {
         freshCalls == 0 && newCitations == 0 && !didMutate
+    }
+
+    /// Autonomous label suggestion via a COLLABORATIVE signal: propose tags for an item
+    /// from the labels its nearest neighbors carry, excluding ones the item already has.
+    /// `neighborTags` is ordered most-similar-first; each neighbor contributes its tags
+    /// with a rank-decayed weight (1/(rank+1)) so closer neighbors count more. The first
+    /// spelling seen for a tag (case-insensitive) is the one returned. Sorted by score
+    /// desc, ties by name asc. Distinct from `proposeLabels` (which uses the item's OWN
+    /// keywords). Pure → unit-testable.
+    static func tagsFromNeighbors(existing: Set<String>, neighborTags: [[String]],
+                                  limit: Int = 5) -> [String] {
+        let have = Set(existing.map { $0.lowercased() })
+        var score: [String: Double] = [:]      // key: lowercased tag
+        var display: [String: String] = [:]    // key → first-seen spelling
+        var firstIndex: [String: Int] = [:]     // key → first appearance order (stable tiebreak)
+        var order = 0
+        for (rank, tags) in neighborTags.enumerated() {
+            let weight = 1.0 / Double(rank + 1)
+            for tag in tags {
+                let k = tag.lowercased()
+                guard !k.isEmpty, !have.contains(k) else { continue }
+                score[k, default: 0] += weight
+                if display[k] == nil { display[k] = tag; firstIndex[k] = order; order += 1 }
+            }
+        }
+        let ranked = score.keys.sorted { a, b in
+            if score[a]! != score[b]! { return score[a]! > score[b]! }   // higher score first
+            return a < b                                                  // ties: name asc
+        }
+        return ranked.prefix(limit).compactMap { display[$0] }
     }
 
     /// Autonomous suggestion: from a source item's tags and its semantically-related
@@ -1486,6 +1519,21 @@ struct ToolAgent: Sendable {
                 ? "'\(it.title)' has no labels yet — consider adding one and applying it across these."
                 : "None share a label with '\(it.title)' (its labels: \(sourceTags.sorted().joined(separator: ", "))). Offer to co-tag them."
             return ("\(connections.count) possible connection(s) to '\(it.title)': \(names). \(tagHint)", [])
+
+        case "suggest_tags_from_neighbors":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Learning labels from files similar to \(it.title)…")
+            let neighbors = (try? await store.relatedItems(to: it.id, k: 8)) ?? []
+            let byItem = (try? await store.tagsByItem()) ?? [:]
+            let existing = Set(byItem[it.id] ?? [])
+            let neighborTags = neighbors.map { byItem[$0.item.id] ?? [] }
+            let proposed = Self.tagsFromNeighbors(existing: existing, neighborTags: neighborTags)
+            guard !proposed.isEmpty else {
+                return ("No label suggestions for '\(it.title)' from similar files (its neighbors are untagged, or it already shares their labels).", [])
+            }
+            return ("Labels used by files similar to '\(it.title)': \(proposed.joined(separator: ", ")). Want me to add any with add_tag?", [])
 
         case "reveal_in_finder":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
