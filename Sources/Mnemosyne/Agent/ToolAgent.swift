@@ -202,6 +202,7 @@ struct ToolAgent: Sendable {
     • extract_amounts(item) — pull monetary amounts ($, €, USD…) and total them per currency.
     • extract_definitions(item) — pull definition sentences (X means Y, HTTP stands for…) into a glossary.
     • extract_mentions(item) — pull #hashtags and @mentions with counts (ignores emails/headings).
+    • parse_url(url) — break a URL into scheme/host/path/query params/fragment (decoded).
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
     • make_table(data) — format rows into an aligned markdown table (first row = header).
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
@@ -332,6 +333,9 @@ struct ToolAgent: Sendable {
                  ["item": item], required: ["item"]),
             tool("extract_mentions", "Pull #hashtags and @mentions from a file with their counts — note tags and people. Correctly ignores email addresses and markdown headings.",
                  ["item": item], required: ["item"]),
+            tool("parse_url", "Break a URL into its parts — scheme, host, path, decoded query parameters, and fragment. Use to inspect what a link (e.g. a tracking URL) actually contains.",
+                 ["url": ["type": "string", "description": "The URL to parse, e.g. 'https://example.com/p?utm_source=x'."]],
+                 required: ["url"]),
             tool("bar_chart", "Render a horizontal ASCII bar chart to VISUALIZE numbers in the chat — pass 'label: value' pairs (comma- or newline-separated), e.g. 'Jan: 8, Feb: 5, Mar: 3'. Great for showing column stats, trends, or tallies you computed.",
                  ["data": ["type": "string", "description": "Label:value pairs, comma- or newline-separated, e.g. 'Q1: 12, Q2: 19'. Plain numbers only (no thousands separators)."]],
                  required: ["data"]),
@@ -1962,6 +1966,13 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse any 'label: value' pairs from the data. Example: 'Jan: 8, Feb: 5'.", [])
             }
             return ("```\n\(chart)\n```", [])
+
+        case "parse_url":
+            guard let url = arg("url"), !url.isEmpty else { return ("Missing 'url'.", []) }
+            guard let summary = URLParser.summary(url) else {
+                return ("'\(url)' doesn't look like a valid URL.", [])
+            }
+            return ("URL parts:\n\(summary)", [])
 
         case "make_table":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (rows of cells).", []) }
