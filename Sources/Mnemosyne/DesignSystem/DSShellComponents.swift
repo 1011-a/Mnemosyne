@@ -15,13 +15,18 @@ public struct OmniPrompt: View {
     var focusRequest: Int
     var onSend: () -> Void
     var onStop: () -> Void
+    var onFocusChange: (Bool) -> Void
     @FocusState private var focused: Bool
+    @State private var dictation = Dictation()
+    @State private var dictationBase = ""   // text before the current utterance
 
     public init(text: Binding<String>, placeholder: String = "Ask your knowledge…",
                 isBusy: Bool, focusRequest: Int = 0,
-                onSend: @escaping () -> Void, onStop: @escaping () -> Void) {
+                onSend: @escaping () -> Void, onStop: @escaping () -> Void,
+                onFocusChange: @escaping (Bool) -> Void = { _ in }) {
         self._text = text; self.placeholder = placeholder; self.isBusy = isBusy
         self.focusRequest = focusRequest; self.onSend = onSend; self.onStop = onStop
+        self.onFocusChange = onFocusChange
     }
 
     public var body: some View {
@@ -29,14 +34,27 @@ public struct OmniPrompt: View {
         // (with `.bottom` the placeholder dropped to the bottom edge). It still reads
         // well when the field grows to multiple lines.
         HStack(alignment: .center, spacing: DS.Space.x3) {
-            TextField(placeholder, text: $text, axis: .vertical)
+            // Native single-line TextField — full IME support (Chinese/Japanese/Korean);
+            // Enter sends. (The multiline axis:.vertical variant has a known IME bug.)
+            TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .font(DS.Typo.body)
                 .foregroundStyle(DS.ColorToken.textPrimary)
-                .lineLimit(1...6)
                 .focused($focused)
                 .onSubmit(send)
                 .onChange(of: focusRequest) { _, _ in focused = true }
+                .onChange(of: focused) { _, f in onFocusChange(f) }
+
+            // Voice input — dictate into the field (live partial transcription).
+            Button { toggleDictation() } label: {
+                Image(systemName: dictation.isRecording ? "mic.fill" : "mic")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(dictation.isRecording ? DS.ColorToken.iris : DS.ColorToken.textTertiary)
+                    .frame(width: 30, height: 30)
+                    .background(dictation.isRecording ? DS.ColorToken.iris.opacity(0.12) : .clear, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help(dictation.isRecording ? "Stop dictation" : "Voice input")
 
             Button(action: isBusy ? onStop : send) {
                 Image(systemName: isBusy ? "stop.fill" : "arrow.up")
@@ -63,7 +81,16 @@ public struct OmniPrompt: View {
 
     private func send() {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if dictation.isRecording { dictation.stop() }
         onSend()
+    }
+
+    private func toggleDictation() {
+        dictationBase = text.isEmpty ? "" : text.trimmingCharacters(in: .whitespaces) + " "
+        dictation.toggle { utterance in
+            // Replace the current utterance each time the recognizer refines it.
+            text = dictationBase + utterance
+        }
     }
 }
 

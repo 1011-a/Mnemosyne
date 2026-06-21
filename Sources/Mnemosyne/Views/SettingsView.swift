@@ -11,16 +11,25 @@ struct SettingsView: View {
     @State private var visionEngine: VisionEngine = .gemma
     @State private var queryRewrite = false
     @State private var agentic = true
+    @State private var agenticCritic = true
+    @State private var buildEngine: BuildEngine = .deepseek
+    @State private var contextBudget = 96_000
     @State private var autoTag = true
     @State private var keywordWeight = 0.3
     @State private var model = "deepseek-chat"
     @State private var deepSeekKeyInput = ""
     @State private var deepSeekKeyMessage = ""
+    @State private var serpApiKeyInput = ""
     @State private var ollamaStatus: OllamaStatus = .unknown
     @State private var checkingOllama = false
     @State private var confirmingClear = false
     @State private var reindexing = false
     @State private var watchedRoots: [URL] = []
+    @State private var pinnedFacts: [PinnedFact] = []
+    @State private var newFact = ""
+
+    /// Identifiable wrapper so pinned facts can drive a ForEach.
+    private struct PinnedFact: Identifiable { let id: String; let fact: String }
 
     var body: some View {
         ScrollView {
@@ -51,6 +60,20 @@ struct SettingsView: View {
                              : deepSeekKeyMessage)
                             .font(DS.Typo.caption)
                             .foregroundStyle(deepSeekKeyMessage.hasPrefix("Could not") ? DS.ColorToken.danger : DS.ColorToken.textTertiary)
+
+                        Text("SerpAPI key (web search)").font(DS.Typo.caption)
+                            .foregroundStyle(DS.ColorToken.textTertiary).padding(.top, DS.Space.x2)
+                        HStack(spacing: DS.Space.x3) {
+                            SecureField("optional — leave blank for keyless search", text: $serpApiKeyInput)
+                                .textFieldStyle(.roundedBorder).frame(maxWidth: 440)
+                                .onSubmit { services.settings.serpApiKey = serpApiKeyInput }
+                                .accessibilityIdentifier("settings.serpApiKey")
+                            DSButton("Save", icon: "key", kind: .secondary) {
+                                services.settings.serpApiKey = serpApiKeyInput
+                            }
+                        }
+                        Text("Web search works without a key (DuckDuckGo). Add a SerpAPI key for richer Google results.")
+                            .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                     }
                     Picker("Model", selection: $model) {
                         Text("deepseek-chat (fast)").tag("deepseek-chat")
@@ -184,10 +207,45 @@ struct SettingsView: View {
                         }
                     }.onChange(of: agentic) { _, v in services.settings.agentic = v }
                         .accessibilityIdentifier("settings.agentic")
+                    if agentic {
+                        Toggle(isOn: $agenticCritic) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Critic pass (verify before answering)").font(DS.Typo.body)
+                                    .foregroundStyle(DS.ColorToken.textSecondary)
+                                Text("A reviewer checks the evidence first — can run one more search or make the answer hedge.")
+                                    .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                            }
+                        }.onChange(of: agenticCritic) { _, v in services.settings.agenticCritic = v }
+                            .accessibilityIdentifier("settings.agenticCritic")
+                            .padding(.leading, DS.Space.x4)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Picker("Build agent (create_artifact)", selection: $buildEngine) {
+                            ForEach(BuildEngine.allCases) { Text($0.label).tag($0) }
+                        }
+                        .onChange(of: buildEngine) { _, v in services.settings.buildEngine = v }
+                        .accessibilityIdentifier("settings.buildEngine")
+                        Text(buildEngine.detail)
+                            .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Picker("Conversation memory", selection: $contextBudget) {
+                            Text("Focused · 32K").tag(32_000)
+                            Text("Balanced · 64K").tag(64_000)
+                            Text("Long · 96K").tag(96_000)
+                            Text("Maximum · 128K").tag(128_000)
+                        }
+                        .onChange(of: contextBudget) { _, v in services.settings.contextBudget = v }
+                        .accessibilityIdentifier("settings.contextBudget")
+                        Text("How much chat history the agent keeps before compacting the oldest turns. DeepSeek's context is long and cheap — bigger keeps more verbatim.")
+                            .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                    }
                 }
                 .tint(DS.ColorToken.iris)
                 .padding(DS.Space.x6)
             }
+
+            memoryPanel
 
             GlassPanel {
                 VStack(alignment: .leading, spacing: DS.Space.x3) {
@@ -236,13 +294,75 @@ struct SettingsView: View {
             visionEngine = services.settings.visionEngine
             queryRewrite = services.settings.queryRewrite
             agentic = services.settings.agentic
+            agenticCritic = services.settings.agenticCritic
+            buildEngine = services.settings.buildEngine
+            contextBudget = services.settings.contextBudget
             autoTag = services.settings.autoTag
             model = services.settings.model
             keywordWeight = services.settings.keywordWeight
             deepSeekKeyInput = services.settings.deepSeekKey
+            serpApiKeyInput = services.settings.serpApiKey
             ollamaStatus = services.ollamaStatus
             watchedRoots = services.roots.roots
         }
+    }
+
+    /// Long-term memory: the facts the agent always remembers across conversations.
+    private var memoryPanel: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: DS.Space.x3) {
+                Text("Long-term memory").font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                Text("Facts the agent always remembers — injected into every conversation, never compacted.")
+                    .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                if pinnedFacts.isEmpty {
+                    Text("Nothing pinned yet. Tell the agent to \u{201C}remember\u{201D} something, or add one below.")
+                        .font(DS.Typo.callout).foregroundStyle(DS.ColorToken.textTertiary)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(pinnedFacts) { f in
+                            HStack(spacing: DS.Space.x3) {
+                                Image(systemName: "sparkles").font(.system(size: 10)).foregroundStyle(DS.ColorToken.iris)
+                                Text(f.fact).font(DS.Typo.callout).foregroundStyle(DS.ColorToken.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: DS.Space.x3)
+                                Button { removeFact(f.id) } label: {
+                                    Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(DS.ColorToken.textTertiary)
+                                }.buttonStyle(.plain).help("Forget this fact")
+                            }
+                            .padding(.vertical, DS.Space.x2)
+                            if f.id != pinnedFacts.last?.id { Rectangle().fill(DS.ColorToken.borderSubtle).frame(height: 1) }
+                        }
+                    }
+                }
+                HStack(spacing: DS.Space.x2) {
+                    Image(systemName: "plus.circle").foregroundStyle(DS.ColorToken.iris)
+                    TextField("Add a fact to remember…", text: $newFact)
+                        .textFieldStyle(.plain).font(DS.Typo.body).onSubmit { addFact() }
+                    if !newFact.trimmingCharacters(in: .whitespaces).isEmpty {
+                        DSButton("Pin", icon: "pin", kind: .primary) { addFact() }
+                    }
+                }
+                .padding(.horizontal, DS.Space.x3).padding(.vertical, DS.Space.x2)
+                .background(DS.ColorToken.canvasRaised, in: RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous).strokeBorder(DS.ColorToken.borderSubtle, lineWidth: 1))
+            }
+            .padding(DS.Space.x6)
+        }
+        .task { await loadFacts() }
+    }
+
+    private func loadFacts() async {
+        let facts = (try? await services.store.allPinnedFacts()) ?? []
+        pinnedFacts = facts.map { PinnedFact(id: $0.id, fact: $0.fact) }
+    }
+    private func addFact() {
+        let f = newFact.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !f.isEmpty else { return }
+        newFact = ""
+        Task { try? await services.store.addPinnedFact(f); await loadFacts() }
+    }
+    private func removeFact(_ id: String) {
+        Task { try? await services.store.removePinnedFact(id: id); await loadFacts() }
     }
 
     private var ollamaSetupCallout: some View {

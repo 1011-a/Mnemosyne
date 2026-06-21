@@ -26,6 +26,52 @@ final class ChatViewModel {
 
     /// Status line shown during agentic (tool-loop) turns, e.g. "Searching: …".
     var agentStatus: String = ""
+    /// The agent's plan for a complex goal (empty for simple turns).
+    var agentPlan: [String] = []
+    /// How many leading plan steps the agent has completed this turn.
+    var completedSteps: Int = 0
+    /// Why the in-flight agentic turn ended (e.g. step-limit) — attached on commit.
+    private var pendingFinishNote: String = ""
+    /// A live, accumulating trace of the agent's tool activity this turn.
+    var agentTrace: [String] = []
+
+    /// Proactive, content-derived suggestions shown in the empty Ask hero.
+    var suggestions: [Suggestion] = []
+
+    /// The running compaction brief for this thread, if older turns were summarized
+    /// (drives the subtle "memory compacted" indicator). nil ⇒ full history in play.
+    var memorySummary: String?
+
+    /// Facts pinned to long-term memory (lowercased) — to avoid re-suggesting a pin.
+    var pinnedFacts: [String] = []
+
+    /// Refresh the stored compaction summary + pinned facts for the current thread.
+    func loadMemorySummary() async {
+        memorySummary = (try? await store.loadThreadSummary(threadID: threadID))?.summary
+        pinnedFacts = ((try? await store.allPinnedFacts()) ?? []).map { $0.fact.lowercased() }
+    }
+
+    /// Pin a fact to long-term memory (from the "Remember this?" chip).
+    func pinFact(_ fact: String) async {
+        try? await store.addPinnedFact(fact)
+        pinnedFacts = ((try? await store.allPinnedFacts()) ?? []).map { $0.fact.lowercased() }
+    }
+
+    /// Forget this thread's compaction summary — the next turn recompacts from scratch.
+    func forgetMemory() async {
+        try? await store.deleteThreadSummary(threadID: threadID)
+        memorySummary = nil
+    }
+
+    /// Rough context usage for the current thread: (estimated tokens, budget).
+    var contextEstimate: (used: Int, budget: Int) {
+        (ContextManager.totalTokens(messages), settings.contextBudget)
+    }
+
+    /// Refresh autonomous suggestions from the current knowledge base.
+    func loadSuggestions() async {
+        suggestions = await SuggestionEngine.suggestions(from: store)
+    }
 
     private let makeRAG: @MainActor () -> RAGAgent
     private let makeTool: @MainActor () -> ToolAgent
@@ -89,6 +135,7 @@ final class ChatViewModel {
         title = "New chat"
         threadCreatedAt = Date()
         threadPinned = false
+        memorySummary = nil
     }
 
     func open(_ thread: ChatThread) {
@@ -96,7 +143,11 @@ final class ChatViewModel {
         task?.cancel(); isStreaming = false; streamingText = ""
         threadID = thread.id; title = thread.title
         threadCreatedAt = thread.createdAt; threadPinned = thread.pinned
-        Task { messages = (try? await store.loadMessages(threadID: thread.id)) ?? [] }
+        memorySummary = nil
+        Task {
+            messages = (try? await store.loadMessages(threadID: thread.id)) ?? []
+            await loadMemorySummary()
+        }
     }
 
     func deleteThread(_ thread: ChatThread) {
@@ -168,12 +219,24 @@ final class ChatViewModel {
 
     /// Multi-hop agentic tool loop: shows search status, then streams the answer.
     private func sendAgentic(query: String, history: [ChatMessage], firstTurn: Bool, agent: ToolAgent) {
+        agentPlan = []; agentTrace = []; completedSteps = 0; pendingFinishNote = ""
         task = Task {
             var cites: [Citation] = []
+            let tid = threadID
             let stream = agent.answerStream(
-                query: query, history: history,
-                onStatus: { status in Task { @MainActor in self.agentStatus = status } },
-                onCitations: { c in Task { @MainActor in self.pendingCitations = c } })
+                query: query, history: history, threadID: tid,
+                onStatus: { status in Task { @MainActor in
+                    self.agentStatus = status
+                    let s = status.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !s.isEmpty, s != "Planning…", self.agentTrace.last != s {
+                        self.agentTrace.append(s)
+                        if self.agentTrace.count > 20 { self.agentTrace.removeFirst() }
+                    }
+                } },
+                onCitations: { c in Task { @MainActor in self.pendingCitations = c } },
+                onPlan: { plan in Task { @MainActor in self.agentPlan = plan } },
+                onPlanStep: { n in Task { @MainActor in self.completedSteps = n } },
+                onFinishNote: { note in Task { @MainActor in self.pendingFinishNote = note ?? "" } })
             do {
                 for try await delta in stream {
                     if Task.isCancelled { break }
@@ -242,7 +305,8 @@ final class ChatViewModel {
             let kept = used.isEmpty ? citations : citations.filter { used.contains($0.index) }
             messages.append(ChatMessage(role: .assistant, content: text, citations: kept,
                                         model: activeModel,
-                                        reasoning: streamingReasoning.trimmingCharacters(in: .whitespacesAndNewlines)))
+                                        reasoning: streamingReasoning.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        agentNote: pendingFinishNote))
             // Track which sources the agent actually leaned on.
             let citedIDs = kept.map(\.itemID)
             Task { try? await store.recordCitations(itemIDs: citedIDs) }
@@ -251,9 +315,12 @@ final class ChatViewModel {
         streamingReasoning = ""
         agentStatus = ""
         pendingCitations = []
+        pendingFinishNote = ""
         isStreaming = false
         persist()
         if firstTurn, title == "New chat", !query.isEmpty { autoTitle(from: query) }
+        // The turn may have compacted older history — refresh the memory indicator.
+        Task { await loadMemorySummary() }
     }
 
     private func failTurn(_ error: Error) {

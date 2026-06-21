@@ -12,14 +12,33 @@ struct AnswerCardView: View {
 
     @State private var thumbs: [String: NSImage] = [:]
     @State private var hovered = false
+    /// Optional spatial layout: the claim as a hub with sources radiating out.
+    @State private var constellation = false
 
     private var blocks: [AnswerBlock] { AnswerFormat.parse(message.content) }
+
+    /// A concise claim for the constellation hub — the first substantial line.
+    private var claimText: String {
+        for block in blocks {
+            switch block {
+            case .lead(let t), .heading(let t), .paragraph(let t):
+                let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                if s.count >= 4 { return String(s.prefix(160)) }
+            default: continue
+            }
+        }
+        return String(message.content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x4) {
             header
-            content
-            if !message.citations.isEmpty { sources }
+            if constellation, !message.citations.isEmpty {
+                AnswerConstellationView(claim: claimText, citations: message.citations, onReveal: onReveal)
+            } else {
+                content
+                if !message.citations.isEmpty { sources }
+            }
             actions
         }
         .padding(DS.Space.x6)
@@ -42,6 +61,16 @@ struct AnswerCardView: View {
             Text("ANSWER").font(DS.Typo.caption).tracking(1.5)
                 .foregroundStyle(DS.ColorToken.iris)
             Spacer()
+            if !message.citations.isEmpty {
+                Button { withAnimation(DS.Motion.base) { constellation.toggle() } } label: {
+                    Image(systemName: constellation ? "doc.plaintext" : "point.3.connected.trianglepath.dotted")
+                        .font(.system(size: 12))
+                        .foregroundStyle(constellation ? DS.ColorToken.iris : DS.ColorToken.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .help(constellation ? "Show as text" : "Show as constellation")
+                .accessibilityIdentifier("answer.constellationToggle")
+            }
             if !message.model.isEmpty {
                 Text(message.model.uppercased()).font(DS.Typo.caption).tracking(0.6)
                     .foregroundStyle(DS.ColorToken.textTertiary)

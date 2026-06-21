@@ -7,6 +7,7 @@ struct AppShell: View {
     @State private var section = "chat"
     @State private var chat: ChatViewModel
     @State private var library: LibraryViewModel
+    @State private var tasks = TasksViewModel()
 
     init(services: Services) {
         self.services = services
@@ -19,16 +20,15 @@ struct AppShell: View {
 
     private let nav: [(id: String, label: String)] = [
         ("chat", "Ask"), ("library", "Library"), ("ingest", "Ingest"),
-        ("insights", "Insights"), ("settings", "Settings")
+        ("artifacts", "Artifacts"), ("tasks", "Tasks"), ("insights", "Insights"), ("settings", "Settings")
     ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            Rectangle().fill(DS.ColorToken.borderSubtle).frame(height: 1)
-            detail.frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(DS.ColorToken.canvas.ignoresSafeArea())
+        detail
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(DS.ColorToken.canvas.ignoresSafeArea())
+            .navigationTitle("Mnemosyne")
+            .toolbar { nativeToolbar }
         .onReceive(NotificationCenter.default.publisher(for: .mnemoNewChat)) { _ in
             chat.newThread(); withAnimation(DS.Motion.snappy) { section = "chat" }
         }
@@ -41,6 +41,9 @@ struct AppShell: View {
             withAnimation(DS.Motion.snappy) { section = "library" }
             searchFocusToken += 1
         }
+        // Refresh the task list/badge whenever the user changes pages — the agent
+        // may have added or completed reminders during a chat turn.
+        .onChange(of: section) { _, _ in tasks.reload() }
         .task {
             // Deterministic, network-free state when driven by XCUITest.
             if ProcessInfo.processInfo.arguments.contains("--uitest") {
@@ -51,62 +54,54 @@ struct AppShell: View {
             }
             chat.resumeMostRecent()
             library.loadSavedSearches()
+            tasks.reload()
             await services.probe()
             services.resumeIndexing()
         }
     }
 
-    // A single, quiet top bar — wordmark, centered nav, minimal actions.
-    private var topBar: some View {
-        HStack(spacing: DS.Space.x4) {
-            HStack(spacing: DS.Space.x2) {
-                Circle().fill(DS.ColorToken.iris).frame(width: 7, height: 7)
-                Text("Mnemosyne").font(DS.Typo.title3).tracking(0.3)
-                    .foregroundStyle(DS.ColorToken.textPrimary)
+    // Native window toolbar: section nav in the centre, chat actions on the right.
+    @ToolbarContentBuilder
+    private var nativeToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            HStack(spacing: DS.Space.x5) {
+                ForEach(nav, id: \.id) { navButton($0) }
             }
-            Spacer()
-            HStack(spacing: DS.Space.x6) {
-                ForEach(nav, id: \.id) { item in
-                    let active = section == item.id
-                    Button { withAnimation(DS.Motion.snappy) { section = item.id } } label: {
-                        Text(item.label.uppercased()).font(DS.Typo.caption).tracking(0.8)
-                            .foregroundStyle(active ? DS.ColorToken.textPrimary : DS.ColorToken.textTertiary)
-                            .overlay(alignment: .bottom) {
-                                if active { Rectangle().fill(DS.ColorToken.iris).frame(height: 2).offset(y: 7) }
-                            }
-                    }.buttonStyle(.plain)
-                    .accessibilityIdentifier("nav.\(item.id)")
+        }
+        if section == "chat" {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if !chat.messages.isEmpty {
+                    Button {
+                        SavePanel.writeText(chat.exportMarkdown(),
+                                            suggestedName: "\(chat.title).md", types: [.plainText])
+                    } label: { Image(systemName: "square.and.arrow.up") }
+                        .help("Export conversation")
                 }
+                Button { showHistory.toggle() } label: { Image(systemName: "clock.arrow.circlepath") }
+                    .help("Chat history")
+                    .popover(isPresented: $showHistory, arrowEdge: .bottom) { historyPopover }
+                Button { chat.newThread() } label: { Image(systemName: "square.and.pencil") }
+                    .help("New chat")
             }
-            Spacer()
-            HStack(spacing: DS.Space.x3) {
-                if section == "chat" {
-                    if !chat.messages.isEmpty {
-                        barIcon("square.and.arrow.up", id: "chat.export") {
-                            SavePanel.writeText(chat.exportMarkdown(),
-                                                suggestedName: "\(chat.title).md", types: [.plainText])
-                        }
-                    }
-                    barIcon("clock.arrow.circlepath", id: "chat.history") { showHistory.toggle() }
-                        .popover(isPresented: $showHistory, arrowEdge: .bottom) { historyPopover }
-                    barIcon("square.and.pencil", id: "chat.newchat") { chat.newThread() }
+        }
+    }
+
+    private func navButton(_ item: (id: String, label: String)) -> some View {
+        let active = section == item.id
+        return Button { withAnimation(DS.Motion.snappy) { section = item.id } } label: {
+            HStack(spacing: 4) {
+                Text(item.label.uppercased()).font(DS.Typo.caption).tracking(0.8)
+                    .foregroundStyle(active ? DS.ColorToken.iris : DS.ColorToken.textSecondary)
+                if item.id == "tasks", tasks.openCount > 0 {
+                    Text("\(tasks.openCount)").font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(DS.ColorToken.iris, in: Capsule())
                 }
             }
         }
-        // Pin a constant bar height so the top bar doesn't change height between
-        // pages (only Chat shows the 30pt action icons; other pages have none).
-        .frame(height: 30)
-        .padding(.horizontal, DS.Space.x8).padding(.vertical, DS.Space.x4)
-    }
-
-    private func barIcon(_ icon: String, id: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon).font(.system(size: 14))
-                .foregroundStyle(DS.ColorToken.textSecondary)
-                .frame(width: 30, height: 30)
-        }.buttonStyle(.plain)
-        .accessibilityIdentifier(id)
-        .help(id)
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("nav.\(item.id)")
     }
 
     private var historyPopover: some View {
@@ -137,10 +132,19 @@ struct AppShell: View {
         switch section {
         case "chat":     ChatView(vm: chat, onIngest: goToIngest)
         case "library":  LibraryView(vm: library, store: services.store, onAsk: ask(about:),
+                                     onAskText: { q in withAnimation(DS.Motion.snappy) { section = "chat" }; chat.send(q) },
                                      onIngest: goToIngest, onReingest: { services.reingest(path: $0) },
                                      focusToken: searchFocusToken)
-        case "ingest":   IngestView(services: services, progress: services.progress)
-        case "insights": InsightsView(store: services.store)
+        case "ingest":   IngestView(services: services, progress: services.progress,
+                                     onAsk: { q in withAnimation(DS.Motion.snappy) { section = "chat" }; chat.send(q) })
+        case "artifacts": ArtifactsView()
+        case "tasks":    TasksView(vm: tasks)
+        case "insights": InsightsView(store: services.store, onSelectTag: { tag in
+                            library.activeTag = tag
+                            withAnimation(DS.Motion.snappy) { section = "library" }
+                         }, onAskText: { q in
+                            withAnimation(DS.Motion.snappy) { section = "chat" }; chat.send(q)
+                         })
         default:         SettingsView(services: services)
         }
     }
@@ -204,3 +208,4 @@ struct ContentRoot: View {
         }
     }
 }
+

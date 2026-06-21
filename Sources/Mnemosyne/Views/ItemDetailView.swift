@@ -7,6 +7,8 @@ struct ItemDetailView: View {
     let item: KnowledgeItem
     let store: KnowledgeStore
     var onAsk: (KnowledgeItem) -> Void
+    /// Jump to Ask and run a free-text request about this file (summarize/outline/…).
+    var onAskText: (String) -> Void = { _ in }
     var onReingest: (String) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var chunks: [String] = []
@@ -20,6 +22,7 @@ struct ItemDetailView: View {
         VStack(alignment: .leading, spacing: DS.Space.x5) {
             header
             tagEditor
+            quickActions
             Divider().overlay(DS.ColorToken.borderSubtle)
             if loading {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
@@ -110,6 +113,30 @@ struct ItemDetailView: View {
                 }
             }
         }
+    }
+
+    /// One-tap document actions that route to the agent's per-file tools.
+    private var quickActions: some View {
+        HStack(spacing: DS.Space.x2) {
+            quickAction("Summarize", "text.alignleft", "Summarize the file \u{201C}\(item.title)\u{201D} using summarize_item.")
+            quickAction("Outline", "list.bullet.indent", "Show the outline of \u{201C}\(item.title)\u{201D} using outline_item.")
+            quickAction("Key terms", "tag", "What are the key terms in \u{201C}\(item.title)\u{201D}? Use keyword_extract, then suggest 3-5 labels.")
+            quickAction("Auto-label", "wand.and.stars", "Suggest labels for \u{201C}\(item.title)\u{201D} using suggest_labels, then ask me before applying.")
+            quickAction("Translate", "character.bubble", "Translate the file \u{201C}\(item.title)\u{201D} with translate_item — into English, or into 中文 if it's already English.")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func quickAction(_ label: String, _ icon: String, _ prompt: String) -> some View {
+        Button { onAskText(prompt); dismiss() } label: {
+            HStack(spacing: DS.Space.x1) {
+                Image(systemName: icon).font(.system(size: 10))
+                Text(label).font(DS.Typo.caption)
+            }
+            .foregroundStyle(DS.ColorToken.iris)
+            .padding(.horizontal, DS.Space.x3).padding(.vertical, DS.Space.x1)
+            .overlay(Capsule().strokeBorder(DS.ColorToken.iris.opacity(0.35), lineWidth: 1))
+        }.buttonStyle(.plain).help(prompt)
     }
 
     private var tagEditor: some View {

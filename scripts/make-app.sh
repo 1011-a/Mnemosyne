@@ -43,6 +43,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key> <true/>
   <key>NSHumanReadableCopyright</key> <string>© 2026 Mnemosyne contributors.</string>
   <key>NSSpeechRecognitionUsageDescription</key> <string>Mnemosyne transcribes your audio files on-device to make them searchable.</string>
+  <key>NSMicrophoneUsageDescription</key> <string>Mnemosyne uses the microphone for voice input in the Ask box.</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSExceptionDomains</key>

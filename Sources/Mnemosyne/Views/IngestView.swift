@@ -5,8 +5,14 @@ import AppKit
 struct IngestView: View {
     let services: Services
     @Bindable var progress: IngestProgress
+    /// Jump to Ask and run a query (suggested from what was ingested).
+    var onAsk: (String) -> Void = { _ in }
     @State private var dropTargeted = false
     @State private var ollamaStatus: OllamaStatus = .unknown
+    @State private var suggestions: [Suggestion] = []
+    /// Throttle state for live suggestion refresh while files are landing.
+    @State private var suggestionBucket = -1
+    @State private var refreshingSuggestions = false
 
     var body: some View {
         ScrollView {
@@ -63,6 +69,28 @@ struct IngestView: View {
                 }
                 PixelCityView(progress: progress)
             }
+
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: DS.Space.x3) {
+                    Text(progress.isRunning ? "EMERGING IDEAS" : "NOW TRY ASKING")
+                        .font(DS.Typo.caption).tracking(1)
+                        .foregroundStyle(progress.isRunning ? DS.ColorToken.iris : DS.ColorToken.textTertiary)
+                        .animation(DS.Motion.snappy, value: progress.isRunning)
+                    FlowLayout(spacing: DS.Space.x2) {
+                        ForEach(suggestions) { s in
+                            Button { onAsk(s.query) } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: s.icon).font(.system(size: 11)).foregroundStyle(DS.ColorToken.iris)
+                                    Text(s.title).font(DS.Typo.callout).foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                                .padding(.horizontal, DS.Space.x4).padding(.vertical, DS.Space.x2)
+                                .overlay(Capsule().strokeBorder(DS.ColorToken.borderDefault, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain).help(s.query)
+                        }
+                    }
+                }
+            }
         }
         .padding(DS.Space.x8)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -89,9 +117,31 @@ struct IngestView: View {
         .task {
             await services.refreshLibraryCount()
             ollamaStatus = await services.refreshOllamaStatus()
+            suggestions = await SuggestionEngine.suggestions(from: services.store, limit: 4)
         }
         .onChange(of: progress.phase) { _, phase in
-            if phase == .done { Task { await services.refreshLibraryCount() } }
+            if phase == .done {
+                Task {
+                    await services.refreshLibraryCount()
+                    suggestions = await SuggestionEngine.suggestions(from: services.store, limit: 4)
+                }
+            }
+        }
+        // LIVE: as files land, refresh the chips when the added-count crosses a new
+        // bucket — so ideas emerge mid-ingest, throttled to avoid per-file churn.
+        .onChange(of: progress.added) { _, added in
+            guard SuggestionEngine.shouldRefreshLive(added: added, lastBucket: suggestionBucket,
+                                                     running: progress.isRunning), !refreshingSuggestions
+            else { return }
+            suggestionBucket = SuggestionEngine.liveBucket(added: added)
+            refreshingSuggestions = true
+            Task {
+                let fresh = await SuggestionEngine.suggestions(from: services.store, limit: 4)
+                await MainActor.run {
+                    withAnimation(DS.Motion.snappy) { suggestions = fresh }
+                    refreshingSuggestions = false
+                }
+            }
         }
     }
 

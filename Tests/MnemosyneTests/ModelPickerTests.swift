@@ -12,11 +12,16 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(overridden.ollamaVisionModel, base.ollamaVisionModel)
     }
 
+    private func tempSettings() -> (SettingsStore, String) {
+        let path = NSTemporaryDirectory() + "secrets-\(UUID().uuidString).json"
+        return (SettingsStore(defaults: UserDefaults(suiteName: "Cfg-\(UUID().uuidString)")!,
+                              keychainService: "com.mnemosyne.tests.\(UUID().uuidString)",
+                              secrets: SecretsFile(path: path)), path)
+    }
+
     func testConfigLoadsDeepSeekKeyFromSettings() {
-        let service = "com.mnemosyne.configtests.\(UUID().uuidString)"
-        defer { KeychainStore.delete(service: service, account: "deepseek.apiKey") }
-        let settings = SettingsStore(defaults: UserDefaults(suiteName: "Cfg-\(UUID().uuidString)")!,
-                                     keychainService: service)
+        let (settings, path) = tempSettings()
+        defer { try? FileManager.default.removeItem(atPath: path) }
         XCTAssertTrue(settings.setDeepSeekKey("sk-from-settings"))
 
         let config = Config.load(settings: settings, environment: [:], arguments: [])
@@ -25,10 +30,8 @@ final class ModelPickerTests: XCTestCase {
     }
 
     func testEnvironmentDeepSeekKeyOverridesSettings() {
-        let service = "com.mnemosyne.configtests.\(UUID().uuidString)"
-        defer { KeychainStore.delete(service: service, account: "deepseek.apiKey") }
-        let settings = SettingsStore(defaults: UserDefaults(suiteName: "Cfg-\(UUID().uuidString)")!,
-                                     keychainService: service)
+        let (settings, path) = tempSettings()
+        defer { try? FileManager.default.removeItem(atPath: path) }
         XCTAssertTrue(settings.setDeepSeekKey("sk-from-settings"))
 
         let config = Config.load(settings: settings,

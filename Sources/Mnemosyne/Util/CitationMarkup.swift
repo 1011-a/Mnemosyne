@@ -11,14 +11,14 @@ enum CitationMarkup {
     static func attributed(_ text: String, accent: Color) -> AttributedString {
         let ns = text as NSString
         let matches = pattern.matches(in: text, range: NSRange(location: 0, length: ns.length))
-        guard !matches.isEmpty else { return AttributedString(text) }
+        guard !matches.isEmpty else { return inlineMarkdown(text) }
 
         var out = AttributedString()
         var cursor = 0
         for m in matches {
             let r = m.range
             if r.location > cursor {
-                out += AttributedString(ns.substring(with: NSRange(location: cursor, length: r.location - cursor)))
+                out += inlineMarkdown(ns.substring(with: NSRange(location: cursor, length: r.location - cursor)))
             }
             var marker = AttributedString(ns.substring(with: r))
             marker.foregroundColor = accent
@@ -27,9 +27,22 @@ enum CitationMarkup {
             cursor = r.location + r.length
         }
         if cursor < ns.length {
-            out += AttributedString(ns.substring(with: NSRange(location: cursor, length: ns.length - cursor)))
+            out += inlineMarkdown(ns.substring(with: NSRange(location: cursor, length: ns.length - cursor)))
         }
         return out
+    }
+
+    /// Render inline markdown (**bold**, *italic*, `code`, links) within a text run,
+    /// preserving whitespace. Falls back to plain text when there's no markup or it
+    /// can't parse — so plain prose is never altered.
+    static func inlineMarkdown(_ s: String) -> AttributedString {
+        guard s.contains("*") || s.contains("`") || s.contains("[") || s.contains("__") else {
+            return AttributedString(s)
+        }
+        return (try? AttributedString(
+            markdown: s,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(s)
     }
 
     /// Number of distinct citation-marker runs (test helper).

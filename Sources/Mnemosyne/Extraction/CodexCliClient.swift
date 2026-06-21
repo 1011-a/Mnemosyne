@@ -85,6 +85,27 @@ struct CodexCliClient: Sendable {
 
     // MARK: - Process plumbing
 
+    /// Developer-agent "create" via Codex: build a deliverable in `workdir` with a
+    /// workspace-write sandbox so it can write files. Mirrors ClaudeCodeClient.createArtifact.
+    static func createArtifact(task: String, context: String, workdir: String,
+                               timeout: TimeInterval = 600) async -> String? {
+        guard let bin = binaryPath else { return nil }
+        let output = URL(fileURLWithPath: workdir).appendingPathComponent(".codex-out.txt")
+        let prompt = """
+        You are a BUILD AGENT. In the working directory, create this deliverable, writing ALL files here:
+        \(task)
+
+        Ground it ONLY in this CONTEXT from the user's knowledge base — do not invent facts:
+        \(context)
+
+        Make it polished and self-contained (inline CSS/JS for any HTML; no external assets).
+        """
+        let args = ["exec", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
+                    "--sandbox", "workspace-write", "--color", "never", "-C", workdir,
+                    "-o", output.path, prompt]
+        return await run(bin: bin, args: args, outputPath: output.path, timeout: timeout, purpose: "create")
+    }
+
     private static func execArgs(prompt: String, cwd: String, imagePath: String?, outputPath: String) -> [String] {
         var args = [
             "exec",

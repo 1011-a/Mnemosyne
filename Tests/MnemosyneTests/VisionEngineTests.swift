@@ -48,4 +48,32 @@ final class VisionEngineTests: XCTestCase {
         XCTAssertTrue(VisionEngine.claudeCode.usesExternalCLI)
         XCTAssertTrue(VisionEngine.codex.usesExternalCLI)
     }
+
+    func testBuildEngineDefaultsToDeepSeekAndPersists() {
+        let d = freshDefaults()
+        XCTAssertEqual(SettingsStore(defaults: d).buildEngine, .deepseek, "DeepSeek-native is the default")
+        SettingsStore(defaults: d).buildEngine = .codex
+        XCTAssertEqual(SettingsStore(defaults: d).buildEngine, .codex)
+        d.set("nonsense", forKey: "mnemosyne.buildEngine")
+        XCTAssertEqual(SettingsStore(defaults: d).buildEngine, .deepseek, "unknown value falls back to DeepSeek")
+    }
+
+    func testContextBudgetDefaultsAndClamps() {
+        let d = freshDefaults()
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, ContextManager.defaultBudgetTokens, "generous default")
+        SettingsStore(defaults: d).contextBudget = 64_000
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 64_000)
+        // Clamped to the sane 16k–128k range.
+        SettingsStore(defaults: d).contextBudget = 5_000
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 16_000)
+        SettingsStore(defaults: d).contextBudget = 500_000
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 128_000)
+    }
+
+    func testBuildEngineExternalCliClassification() {
+        XCTAssertFalse(BuildEngine.deepseek.usesExternalCLI, "DeepSeek is native — no CLI")
+        XCTAssertTrue(BuildEngine.claude.usesExternalCLI)
+        XCTAssertTrue(BuildEngine.codex.usesExternalCLI)
+        for e in BuildEngine.allCases { XCTAssertFalse(e.label.isEmpty); XCTAssertFalse(e.detail.isEmpty) }
+    }
 }

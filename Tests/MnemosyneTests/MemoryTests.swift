@@ -70,22 +70,26 @@ final class MemoryTests: XCTestCase {
         XCTAssertEqual(s.temperature, 0.0, accuracy: 0.0001)
     }
 
-    func testDeepSeekKeyPersistsInKeychainNotDefaults() {
+    func testDeepSeekKeyPersistsInFileNotDefaults() throws {
         let suiteName = "MnemoSecret-\(UUID().uuidString)"
-        let service = "com.mnemosyne.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
+        let secretsPath = NSTemporaryDirectory() + "secrets-\(UUID().uuidString).json"
+        let secrets = SecretsFile(path: secretsPath)
         defer {
-            KeychainStore.delete(service: service, account: "deepseek.apiKey")
+            try? FileManager.default.removeItem(atPath: secretsPath)
             defaults.removePersistentDomain(forName: suiteName)
         }
 
-        let s1 = SettingsStore(defaults: defaults, keychainService: service)
+        let service = "com.mnemosyne.tests.\(UUID().uuidString)"   // isolated — no real Keychain
+        let s1 = SettingsStore(defaults: defaults, keychainService: service, secrets: secrets)
         XCTAssertTrue(s1.setDeepSeekKey("  sk-test-key  "))
         XCTAssertNil(defaults.string(forKey: "mnemosyne.deepSeekKey"),
                      "API keys should not be stored in UserDefaults")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secretsPath), "stored in the secrets file")
 
-        let s2 = SettingsStore(defaults: defaults, keychainService: service)
+        // A fresh store over the same file reads it back (trimmed).
+        let s2 = SettingsStore(defaults: defaults, keychainService: service, secrets: SecretsFile(path: secretsPath))
         XCTAssertEqual(s2.deepSeekKey, "sk-test-key")
         XCTAssertTrue(s2.setDeepSeekKey(""))
         XCTAssertEqual(s2.deepSeekKey, "")

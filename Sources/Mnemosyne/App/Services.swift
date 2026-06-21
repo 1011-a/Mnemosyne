@@ -78,7 +78,13 @@ final class Services {
     func makeToolAgent() -> ToolAgent {
         ToolAgent(store: store, embedder: embedder, deepSeek: currentDeepSeek(),
                   topK: max(4, settings.topK - 2), temperature: settings.temperature,
-                  keywordWeight: Float(settings.keywordWeight))
+                  keywordWeight: Float(settings.keywordWeight), critic: settings.agenticCritic,
+                  onReingest: { [ingestor, progress] path in
+                      await ingestor.reingest(path: path, progress: progress)
+                  },
+                  webSearch: WebSearchClient(serpApiKey: settings.serpApiKey),
+                  buildEngine: settings.buildEngine,
+                  contextBudget: settings.contextBudget)
     }
 
     /// Fresh chat session. Agents are rebuilt per-message from live settings.

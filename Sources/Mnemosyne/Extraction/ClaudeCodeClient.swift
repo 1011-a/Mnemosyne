@@ -69,13 +69,41 @@ struct ClaudeCodeClient: Sendable {
                          timeout: timeout, purpose: "document \(URL(fileURLWithPath: path).lastPathComponent)")
     }
 
+    /// Developer-agent "create" capability: run the claude CLI as a BUILD AGENT in
+    /// `workdir` to produce a deliverable (report, visualization, mini-app, code),
+    /// grounded in `context` from the user's files. Only Read/Edit/Write are allowed
+    /// (no shell) and writes land in `workdir`. Returns the agent's stdout, or nil.
+    static func createArtifact(task: String, context: String, workdir: String,
+                               timeout: TimeInterval = 600) async -> String? {
+        guard let bin = binaryPath else { return nil }
+        let prompt = """
+        You are a BUILD AGENT working in the current directory. Produce this deliverable, writing ALL \
+        files into the current directory:
+
+        \(task)
+
+        Ground it ONLY in this CONTEXT from the user's knowledge base — do not invent facts; cite source \
+        filenames where relevant:
+        \(context)
+
+        Make it polished and self-contained (inline CSS/JS for any HTML; no external assets). When finished, \
+        print on the LAST line exactly: ARTIFACT_FILES: <comma-separated names of the files you created>.
+        """
+        return await run(bin: bin,
+                         args: ["-p", prompt, "--allowedTools", "Read Edit Write",
+                                "--permission-mode", "acceptEdits", "--model", ingestModel],
+                         timeout: timeout, purpose: "create", cwd: workdir)
+    }
+
     // MARK: - Process plumbing
 
-    private static func run(bin: String, args: [String], timeout: TimeInterval, purpose: String) async -> String? {
+    private static func run(bin: String, args: [String], timeout: TimeInterval, purpose: String,
+                            cwd: String? = nil) async -> String? {
         IngestDebugLog.write("CLAUDE spawn purpose=\(purpose) bin=\(bin)")
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: bin)
         proc.arguments = args
+        if let cwd { proc.currentDirectoryURL = URL(fileURLWithPath: cwd) }
         let outPipe = Pipe()
         proc.standardOutput = outPipe
         proc.standardError = FileHandle.nullDevice
