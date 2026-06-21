@@ -1,19 +1,20 @@
 import Foundation
+import Fathom
 
-/// One web search result.
-struct WebResult: Sendable, Equatable {
-    let title: String
-    let url: String
-    let snippet: String
-}
+/// One web search result — single-sourced from Fathom (the general web abstraction).
+typealias WebResult = Fathom.WebResult
 
 /// Gives the agent the open web. Uses SerpAPI (Google) when an API key is set for
 /// rich, reliable results; otherwise falls back to a keyless DuckDuckGo HTML query
 /// so web search works out of the box. Never throws — returns [] on any failure so
-/// the agent degrades gracefully.
-struct WebSearchClient: Sendable {
+/// the agent degrades gracefully. Conforms to `Fathom.WebSearchEngine`, so it can drive
+/// Fathom's `WebSearchTool` / `WebFetchTool` directly.
+struct WebSearchClient: Sendable, Fathom.WebSearchEngine {
     let serpApiKey: String
     var session: URLSession = .shared
+
+    /// `WebSearchEngine.fetch` — read a page's text (maps to `fetchReadable`).
+    func fetch(_ url: String) async -> String? { await fetchReadable(url) }
 
     func search(_ query: String, limit: Int = 6) async -> [WebResult] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
