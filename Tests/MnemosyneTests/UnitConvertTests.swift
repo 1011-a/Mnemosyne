@@ -1,4 +1,5 @@
 import XCTest
+import Fathom
 @testable import Mnemosyne
 
 final class UnitConvertTests: XCTestCase {
