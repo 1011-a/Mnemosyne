@@ -160,6 +160,7 @@ struct ToolAgent: Sendable {
     • summarize_item / outline_item / keyword_extract — condense, outline, or fingerprint a large file.
     • extract_action_items(item) — pull TODOs/tasks/commitments out of a note; proactively offer to add_reminder for each.
     • timeline(item) — list a file's dates in chronological order (a contract/project/history timeline).
+    • extract_figures(item) — pull monetary amounts and percentages from a file (invoices, budgets, reports).
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
     • find_by_date(start,end,field) — list files whose created/modified date falls in an explicit range.
@@ -221,6 +222,8 @@ struct ToolAgent: Sendable {
             tool("extract_emails", "Pull all EMAIL addresses out of a file — for collecting contacts.",
                  ["item": item], required: ["item"]),
             tool("extract_action_items", "Pull actionable TASKS / TODOs / commitments out of a file — checkbox items, TODO/FIXME/ACTION markers, and 'need to / must / follow up / remember to' phrasing. Use to turn notes into follow-ups (then optionally add_reminder for each).",
+                 ["item": item], required: ["item"]),
+            tool("extract_figures", "Pull monetary AMOUNTS ($1,234.56, 50 USD, €10) and PERCENTAGES (15%) out of a file — for invoices, contracts, budgets, reports ('what amounts are in this file').",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1331,6 +1334,17 @@ struct ToolAgent: Sendable {
             let emails = EmailAddressExtractor.extract(text)
             guard !emails.isEmpty else { return ("No email addresses found in '\(it.title)'.", []) }
             return ("\(emails.count) email(s) in '\(it.title)': " + emails.joined(separator: ", "), [])
+
+        case "extract_figures":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding amounts & percentages in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = FigureExtractor.summary(text) else {
+                return ("No monetary amounts or percentages found in '\(it.title)'.", [])
+            }
+            return ("Figures in '\(it.title)':\n" + summary, [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
