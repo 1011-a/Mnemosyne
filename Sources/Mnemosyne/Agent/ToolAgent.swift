@@ -189,6 +189,7 @@ struct ToolAgent: Sendable {
     • csv_to_table(item) — render a CSV/TSV file as an aligned markdown table (first 30 rows).
     • csv_sort(item, column, …) — sort a CSV/TSV by a column (text/numeric, reverse) and show as a table.
     • csv_select(item, columns) — pick/reorder CSV columns (SQL-style projection) and show as a table.
+    • csv_group_by(item, group_by, aggregate, op) — SQL GROUP BY with count/sum/mean/min/max.
     • csv_to_json(item) — convert a CSV/TSV file into a JSON array of objects (header → keys).
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
@@ -326,6 +327,12 @@ struct ToolAgent: Sendable {
             tool("csv_select", "Pick and reorder columns from a CSV/TSV file (like SQL SELECT col1, col3) and show the result as a table. Use to narrow a wide spreadsheet to the columns you care about.",
                  ["item": item, "columns": ["type": "string", "description": "Comma-separated column names, in the order you want, e.g. 'name, city'."]],
                  required: ["item", "columns"]),
+            tool("csv_group_by", "Group a CSV/TSV by a column and aggregate another — like SQL GROUP BY. op is count (default), sum, mean, min, or max; 'aggregate' is required for everything except count. E.g. group_by=region, aggregate=sales, op=sum.",
+                 ["item": item,
+                  "group_by": ["type": "string", "description": "Column to group rows by."],
+                  "aggregate": ["type": "string", "description": "Numeric column to aggregate (not needed for count)."],
+                  "op": ["type": "string", "enum": ["count", "sum", "mean", "min", "max"], "description": "Aggregation (default count)."]],
+                 required: ["item", "group_by"]),
             tool("csv_to_json", "Convert a CSV/TSV file into a JSON array of objects (header row → keys; values stay strings). Use to reshape a spreadsheet for an API or further processing.",
                  ["item": item], required: ["item"]),
             tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
@@ -1879,6 +1886,27 @@ struct ToolAgent: Sendable {
             guard let table = MarkdownTable.tableFrom(clamped) else { return ("Couldn't render the selected columns.", []) }
             let note = projected.count > maxRows + 1 ? "\n…(\(projected.count - 1 - maxRows) more rows)" : ""
             return ("\(it.title) — selected columns:\n\(table)\(note)", [])
+
+        case "csv_group_by":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            guard let groupCol = arg("group_by"), !groupCol.isEmpty else { return ("Missing 'group_by'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            let op = arg("op") ?? "count"
+            onStatus("Grouping \(it.title) by \(groupCol)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            guard let header = rows.first else { return ("'\(it.title)' has no rows.", []) }
+            guard let grouped = CSVGroupBy.group(header: header, rows: Array(rows.dropFirst()),
+                                                 groupColumn: groupCol, aggColumn: arg("aggregate"), op: op) else {
+                return ("Couldn't group '\(it.title)' — check the column names and that 'aggregate' is set for \(op). Columns: \(header.joined(separator: ", ")).", [])
+            }
+            let maxRows = 40
+            let clamped = Array(grouped.prefix(maxRows + 1))
+            guard let table = MarkdownTable.tableFrom(clamped) else { return ("Couldn't render the grouped table.", []) }
+            let note = grouped.count > maxRows + 1 ? "\n…(\(grouped.count - 1 - maxRows) more groups)" : ""
+            return ("\(it.title) grouped by \(groupCol):\n\(table)\(note)", [])
 
         case "csv_to_json":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
