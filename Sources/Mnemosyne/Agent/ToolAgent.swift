@@ -213,6 +213,7 @@ struct ToolAgent: Sendable {
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
     • sort_lines(text, …) — sort lines (alpha/numeric, reverse, unique).
+    • compare_lists(a, b, mode) — set ops on two lists (common/only_a/only_b/union).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -387,6 +388,11 @@ struct ToolAgent: Sendable {
                   "descending": ["type": "boolean", "description": "Reverse order (default false)."],
                   "unique": ["type": "boolean", "description": "Remove duplicate lines (default false)."]],
                  required: ["text"]),
+            tool("compare_lists", "Set operations between two newline-separated lists — mode 'common' (in both), 'only_a' (in A not B), 'only_b' (in B not A), or 'union' (all). Use to compare two sets of names/tags/values.",
+                 ["a": ["type": "string", "description": "List A, one item per line."],
+                  "b": ["type": "string", "description": "List B, one item per line."],
+                  "mode": ["type": "string", "enum": ["common", "only_a", "only_b", "union"], "description": "The set operation (default common)."]],
+                 required: ["a", "b"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2110,6 +2116,15 @@ struct ToolAgent: Sendable {
                                          unique: flag("unique"), numeric: flag("numeric"))
             guard !sorted.isEmpty else { return ("No non-blank lines to sort.", []) }
             return (sorted, [])
+
+        case "compare_lists":
+            guard let a = arg("a"), let b = arg("b") else { return ("Missing 'a' or 'b'.", []) }
+            let mode = arg("mode") ?? "common"
+            guard let result = ListOps.compare(a, b, op: mode) else {
+                return ("Unknown mode. Use 'common', 'only_a', 'only_b', or 'union'.", [])
+            }
+            guard !result.isEmpty else { return ("No items in the '\(mode)' result.", []) }
+            return ("\(result.count) item(s) (\(mode)):\n" + result.map { "  \($0)" }.joined(separator: "\n"), [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
