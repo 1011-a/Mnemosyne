@@ -485,6 +485,12 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertNil(ToolAgent.matchSavedSearch("report", in: amb), "ambiguous substring is not auto-resolved")
     }
 
+    func testMostCitedToolRegisteredReadOnly() {
+        let names = ToolAgent.tools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
+        XCTAssertTrue(names.contains("most_cited"), "most_cited is exposed")
+        XCTAssertFalse(ToolAgent.mutationTools.contains("most_cited"), "reading citation counts is read-only")
+    }
+
     func testSavedSearchToolsRegisteredAndGated() {
         let names = ToolAgent.tools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
         for t in ["save_search", "list_saved_searches", "run_saved_search", "delete_saved_search"] {
