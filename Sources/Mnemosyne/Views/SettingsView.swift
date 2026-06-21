@@ -172,10 +172,19 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Ingest engines — tried top to bottom")
                                 .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textSecondary)
-                            Text("The first engine handles each file; if it fails or times out, the next one takes over automatically.")
+                            Text("Pick which engines to use and the order. The first handles each file; if it fails or times out, the next enabled one takes over automatically.")
                                 .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                            // Active engines — enabled, in priority order (reorderable, removable).
                             ForEach(Array(engineOrder.enumerated()), id: \.element) { idx, eng in
                                 engineRow(eng, index: idx)
+                            }
+                            // Available engines — not currently used; tap to enable.
+                            let available = VisionEngine.allCases.filter { !engineOrder.contains($0) }
+                            if !available.isEmpty {
+                                Text("Available")
+                                    .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                                    .padding(.top, DS.Space.x1)
+                                ForEach(available) { eng in availableRow(eng) }
                             }
                         }
                         .padding(.leading, DS.Space.x4)
@@ -226,11 +235,14 @@ struct SettingsView: View {
                             Text("Focused · 32K").tag(32_000)
                             Text("Balanced · 64K").tag(64_000)
                             Text("Long · 96K").tag(96_000)
-                            Text("Maximum · 128K").tag(128_000)
+                            Text("Extended · 128K").tag(128_000)
+                            Text("Huge · 256K").tag(256_000)
+                            Text("Vast · 512K").tag(512_000)
+                            Text("Maximum · 1M").tag(1_000_000)
                         }
                         .onChange(of: contextBudget) { _, v in services.settings.contextBudget = v }
                         .accessibilityIdentifier("settings.contextBudget")
-                        Text("How much chat history the agent keeps before compacting the oldest turns. DeepSeek's context is long and cheap — bigger keeps more verbatim.")
+                        Text("How much chat history the agent keeps before compacting the oldest turns. The models now support a 1M-token window — bigger keeps more verbatim.")
                             .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                     }
                 }
@@ -285,7 +297,7 @@ struct SettingsView: View {
             temperature = services.settings.temperature
             multimodal = services.settings.multimodal
             visionEngine = services.settings.visionEngine
-            engineOrder = Self.completeOrder(services.settings.visionEngineOrder)
+            engineOrder = services.settings.visionEngineOrder   // the enabled subset, in order
             queryRewrite = services.settings.queryRewrite
             agentic = services.settings.agentic
             agenticCritic = services.settings.agenticCritic
@@ -301,16 +313,15 @@ struct SettingsView: View {
         }
     }
 
-    /// A full ranking of every engine, seeded from the saved preference and with any
-    /// engines not yet ranked appended — so the reorder UI always shows all of them.
-    static func completeOrder(_ saved: [VisionEngine]) -> [VisionEngine] {
-        var out = VisionEngine.normalizedOrder(saved)
-        for e in VisionEngine.allCases where !out.contains(e) { out.append(e) }
-        return out
+    /// CLI-availability warning text for an engine, or nil when it's usable.
+    private func engineWarning(_ eng: VisionEngine) -> String? {
+        if eng == .claudeCode, !ClaudeCodeClient.isAvailable { return "⚠︎ `claude` CLI not found — this engine will be skipped." }
+        if eng == .codex, !CodexCliClient.isAvailable { return "⚠︎ `codex` CLI not found — this engine will be skipped." }
+        return nil
     }
 
-    /// One reorderable engine row: rank badge, label, CLI-availability warning, and
-    /// up/down controls. Position = priority (top is tried first).
+    /// One ACTIVE (enabled) engine row: rank badge, label, availability note, reorder
+    /// controls, and a Disable button. Position = priority (top is tried first).
     @ViewBuilder private func engineRow(_ eng: VisionEngine, index: Int) -> some View {
         HStack(spacing: DS.Space.x3) {
             Text("\(index + 1)")
@@ -321,16 +332,11 @@ struct SettingsView: View {
                 HStack(spacing: 6) {
                     Text(eng.label).font(DS.Typo.body).foregroundStyle(DS.ColorToken.textSecondary)
                     if index == 0 {
-                        Text("primary").font(DS.Typo.caption)
-                            .foregroundStyle(DS.ColorToken.iris)
+                        Text("primary").font(DS.Typo.caption).foregroundStyle(DS.ColorToken.iris)
                     }
                 }
-                if eng == .claudeCode, !ClaudeCodeClient.isAvailable {
-                    Text("⚠︎ `claude` CLI not found — this engine will be skipped.")
-                        .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
-                } else if eng == .codex, !CodexCliClient.isAvailable {
-                    Text("⚠︎ `codex` CLI not found — this engine will be skipped.")
-                        .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
+                if let warn = engineWarning(eng) {
+                    Text(warn).font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
                 } else {
                     Text(eng.detail).font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                 }
@@ -342,16 +348,59 @@ struct SettingsView: View {
             Button { moveEngine(index, by: 1) } label: { Image(systemName: "chevron.down") }
                 .buttonStyle(.borderless).disabled(index == engineOrder.count - 1)
                 .accessibilityLabel("Move \(eng.label) down")
+            // Can't disable the last remaining engine (something must handle vision).
+            Button { disableEngine(eng) } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.borderless).disabled(engineOrder.count <= 1)
+                .foregroundStyle(engineOrder.count <= 1 ? DS.ColorToken.textTertiary : DS.ColorToken.danger)
+                .accessibilityLabel("Disable \(eng.label)")
         }
     }
 
-    /// Move the engine at `index` by `delta` (−1 up, +1 down), persist, and sync the
-    /// primary engine. Bounds-checked.
+    /// One AVAILABLE (disabled) engine row: label, availability note, and an Enable button
+    /// that appends it to the active order (lowest priority).
+    @ViewBuilder private func availableRow(_ eng: VisionEngine) -> some View {
+        HStack(spacing: DS.Space.x3) {
+            Spacer().frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(eng.label).font(DS.Typo.body).foregroundStyle(DS.ColorToken.textTertiary)
+                if let warn = engineWarning(eng) {
+                    Text(warn).font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
+                }
+            }
+            Spacer()
+            Button { enableEngine(eng) } label: {
+                Label("Enable", systemImage: "plus.circle").font(DS.Typo.caption)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Enable \(eng.label)")
+        }
+    }
+
+    /// Move the engine at `index` by `delta` (−1 up, +1 down). Bounds-checked.
     private func moveEngine(_ index: Int, by delta: Int) {
         let dest = index + delta
         guard engineOrder.indices.contains(index), engineOrder.indices.contains(dest) else { return }
         engineOrder.swapAt(index, dest)
-        services.settings.visionEngineOrder = engineOrder       // setter normalizes + syncs visionEngine
+        persistEngineOrder()
+    }
+
+    /// Enable an engine (append at lowest priority).
+    private func enableEngine(_ eng: VisionEngine) {
+        guard !engineOrder.contains(eng) else { return }
+        engineOrder.append(eng)
+        persistEngineOrder()
+    }
+
+    /// Disable an engine, keeping at least one active.
+    private func disableEngine(_ eng: VisionEngine) {
+        guard engineOrder.count > 1 else { return }
+        engineOrder.removeAll { $0 == eng }
+        persistEngineOrder()
+    }
+
+    /// Persist the enabled-and-ordered engine list and keep the primary engine in sync.
+    private func persistEngineOrder() {
+        services.settings.visionEngineOrder = engineOrder   // setter normalizes + syncs visionEngine
         visionEngine = engineOrder.first ?? .gemma
     }
 

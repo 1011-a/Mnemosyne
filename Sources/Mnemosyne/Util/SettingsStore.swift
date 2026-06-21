@@ -123,11 +123,12 @@ struct SettingsStore: @unchecked Sendable {
     }
 
     /// Conversation context budget in tokens — how much history to send before the
-    /// agent compacts the oldest turns. DeepSeek's window is large + cheap, so the
-    /// default is generous (96k). Clamped to a sane 16k–128k.
+    /// agent compacts the oldest turns. The models now support a 1M context window, so
+    /// the budget can go all the way up. Clamped to a sane 16k–1M.
+    static let maxContextBudget = 1_000_000
     var contextBudget: Int {
-        get { Swift.min(128_000, Swift.max(16_000, defaults.object(forKey: Key.contextBudget) as? Int ?? ContextManager.defaultBudgetTokens)) }
-        nonmutating set { defaults.set(Swift.min(128_000, Swift.max(16_000, newValue)), forKey: Key.contextBudget) }
+        get { Swift.min(Self.maxContextBudget, Swift.max(16_000, defaults.object(forKey: Key.contextBudget) as? Int ?? ContextManager.defaultBudgetTokens)) }
+        nonmutating set { defaults.set(Swift.min(Self.maxContextBudget, Swift.max(16_000, newValue)), forKey: Key.contextBudget) }
     }
 
     /// Which engine builds artifacts (create_artifact). Defaults to DeepSeek-native.

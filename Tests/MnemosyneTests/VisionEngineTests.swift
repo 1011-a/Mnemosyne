@@ -63,11 +63,13 @@ final class VisionEngineTests: XCTestCase {
         XCTAssertEqual(SettingsStore(defaults: d).contextBudget, ContextManager.defaultBudgetTokens, "generous default")
         SettingsStore(defaults: d).contextBudget = 64_000
         XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 64_000)
-        // Clamped to the sane 16k–128k range.
+        // Clamped to the sane 16k–1M range (the models now support a 1M window).
         SettingsStore(defaults: d).contextBudget = 5_000
         XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 16_000)
-        SettingsStore(defaults: d).contextBudget = 500_000
-        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 128_000)
+        SettingsStore(defaults: d).contextBudget = 512_000
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 512_000, "512K is now within range")
+        SettingsStore(defaults: d).contextBudget = 5_000_000
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 1_000_000, "clamped to the 1M ceiling")
     }
 
     // MARK: ingest auto-fallback ordering
@@ -107,12 +109,14 @@ final class VisionEngineTests: XCTestCase {
         XCTAssertEqual(settings.visionEngineOrder, [.codex], "derives the order from the legacy setting")
     }
 
-    func testCompleteOrderAppendsMissingEngines() {
-        // The reorder UI always shows every engine; a saved subset is completed.
-        let completed = SettingsView.completeOrder([.claudeCode])
-        XCTAssertEqual(completed.first, .claudeCode, "saved preference keeps priority")
-        XCTAssertEqual(Set(completed), Set(VisionEngine.allCases), "every engine is present to rank")
-        XCTAssertEqual(completed.count, VisionEngine.allCases.count, "no duplicates")
+    func testVisionEngineOrderStoresEnabledSubset() {
+        // Selection: the user enables only Gemma + Claude (Codex disabled) — the order
+        // persists exactly that subset, in priority order, and never pads to all engines.
+        let d = freshDefaults()
+        let a = SettingsStore(defaults: d)
+        a.visionEngineOrder = [.gemma, .claudeCode]
+        XCTAssertEqual(SettingsStore(defaults: d).visionEngineOrder, [.gemma, .claudeCode],
+                       "only the enabled engines are stored, in order")
     }
 
     func testBuildEngineExternalCliClassification() {
