@@ -22,4 +22,19 @@ enum CSVConverter {
               let str = String(data: data, encoding: .utf8) else { return nil }
         return str
     }
+
+    /// Serialize rows to RFC-4180 CSV — a field is quoted only when it contains a comma,
+    /// quote, or newline; embedded quotes are doubled. Nil if there are no rows.
+    static func toCSV(_ rows: [[String]]) -> String? {
+        guard !rows.isEmpty else { return nil }
+        return rows.map { row in row.map(escapeCSVField).joined(separator: ",") }
+            .joined(separator: "\n")
+    }
+
+    static func escapeCSVField(_ field: String) -> String {
+        let needsQuotes = field.contains(",") || field.contains("\"")
+            || field.contains("\n") || field.contains("\r")
+        guard needsQuotes else { return field }
+        return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
 }

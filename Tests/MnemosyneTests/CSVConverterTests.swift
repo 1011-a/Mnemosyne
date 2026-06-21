@@ -37,4 +37,20 @@ final class CSVConverterTests: XCTestCase {
         // sortedKeys → "alpha" key appears before "zeta" in the serialized text.
         XCTAssertTrue(json.range(of: "alpha")!.lowerBound < json.range(of: "zeta")!.lowerBound, json)
     }
+
+    func testToCSVQuotesOnlyWhenNeeded() {
+        XCTAssertEqual(CSVConverter.toCSV([["a", "b"], ["1", "2"]]), "a,b\n1,2")
+        XCTAssertEqual(CSVConverter.escapeCSVField("plain"), "plain")
+        XCTAssertEqual(CSVConverter.escapeCSVField("Smith, John"), "\"Smith, John\"")   // comma
+        XCTAssertEqual(CSVConverter.escapeCSVField("he said \"hi\""), "\"he said \"\"hi\"\"\"")  // quotes doubled
+        XCTAssertEqual(CSVConverter.escapeCSVField("line1\nline2"), "\"line1\nline2\"")  // newline
+        XCTAssertNil(CSVConverter.toCSV([]))
+    }
+
+    func testCSVWriterRoundTripsThroughParser() {
+        // A field with an embedded comma survives a toCSV → DelimitedParser.parse round trip.
+        let csv = CSVConverter.toCSV([["name", "city"], ["Ada", "London, UK"]])!
+        let rows = DelimitedParser.parse(csv)
+        XCTAssertEqual(rows[1], ["Ada", "London, UK"])
+    }
 }
