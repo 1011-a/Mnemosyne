@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var temperature = 0.3
     @State private var multimodal = true
     @State private var visionEngine: VisionEngine = .gemma
+    /// Ordered ingest-engine preference (primary first) with auto-fallback.
+    @State private var engineOrder: [VisionEngine] = [.gemma]
     @State private var queryRewrite = false
     @State private var agentic = true
     @State private var agenticCritic = true
@@ -167,26 +169,17 @@ struct SettingsView: View {
                     }.onChange(of: multimodal) { _, v in services.settings.multimodal = v }
                         .accessibilityIdentifier("settings.multimodal")
                     if multimodal {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Picker("Vision engine", selection: $visionEngine) {
-                                ForEach(VisionEngine.allCases) { eng in
-                                    Text(eng.label).tag(eng)
-                                }
-                            }
-                            .onChange(of: visionEngine) { _, v in services.settings.visionEngine = v }
-                            .accessibilityIdentifier("settings.visionEngine")
-                            Text(visionEngine.detail)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Ingest engines — tried top to bottom")
+                                .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textSecondary)
+                            Text("The first engine handles each file; if it fails or times out, the next one takes over automatically.")
                                 .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
-                            if visionEngine == .claudeCode, !ClaudeCodeClient.isAvailable {
-                                Text("⚠︎ `claude` CLI not found on this Mac — install Claude Code or it falls back to nothing for images.")
-                                    .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
-                            }
-                            if visionEngine == .codex, !CodexCliClient.isAvailable {
-                                Text("⚠︎ `codex` CLI not found on this Mac — install Codex CLI or choose another vision engine.")
-                                    .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
+                            ForEach(Array(engineOrder.enumerated()), id: \.element) { idx, eng in
+                                engineRow(eng, index: idx)
                             }
                         }
                         .padding(.leading, DS.Space.x4)
+                        .accessibilityIdentifier("settings.visionEngineOrder")
                     }
                     Toggle(isOn: $autoTag) {
                         Text("Auto-tag new items from their folder").font(DS.Typo.body)
@@ -292,6 +285,7 @@ struct SettingsView: View {
             temperature = services.settings.temperature
             multimodal = services.settings.multimodal
             visionEngine = services.settings.visionEngine
+            engineOrder = Self.completeOrder(services.settings.visionEngineOrder)
             queryRewrite = services.settings.queryRewrite
             agentic = services.settings.agentic
             agenticCritic = services.settings.agenticCritic
@@ -305,6 +299,60 @@ struct SettingsView: View {
             ollamaStatus = services.ollamaStatus
             watchedRoots = services.roots.roots
         }
+    }
+
+    /// A full ranking of every engine, seeded from the saved preference and with any
+    /// engines not yet ranked appended — so the reorder UI always shows all of them.
+    static func completeOrder(_ saved: [VisionEngine]) -> [VisionEngine] {
+        var out = VisionEngine.normalizedOrder(saved)
+        for e in VisionEngine.allCases where !out.contains(e) { out.append(e) }
+        return out
+    }
+
+    /// One reorderable engine row: rank badge, label, CLI-availability warning, and
+    /// up/down controls. Position = priority (top is tried first).
+    @ViewBuilder private func engineRow(_ eng: VisionEngine, index: Int) -> some View {
+        HStack(spacing: DS.Space.x3) {
+            Text("\(index + 1)")
+                .font(DS.Typo.caption.monospacedDigit())
+                .foregroundStyle(index == 0 ? DS.ColorToken.iris : DS.ColorToken.textTertiary)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(eng.label).font(DS.Typo.body).foregroundStyle(DS.ColorToken.textSecondary)
+                    if index == 0 {
+                        Text("primary").font(DS.Typo.caption)
+                            .foregroundStyle(DS.ColorToken.iris)
+                    }
+                }
+                if eng == .claudeCode, !ClaudeCodeClient.isAvailable {
+                    Text("⚠︎ `claude` CLI not found — this engine will be skipped.")
+                        .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
+                } else if eng == .codex, !CodexCliClient.isAvailable {
+                    Text("⚠︎ `codex` CLI not found — this engine will be skipped.")
+                        .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.danger)
+                } else {
+                    Text(eng.detail).font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
+                }
+            }
+            Spacer()
+            Button { moveEngine(index, by: -1) } label: { Image(systemName: "chevron.up") }
+                .buttonStyle(.borderless).disabled(index == 0)
+                .accessibilityLabel("Move \(eng.label) up")
+            Button { moveEngine(index, by: 1) } label: { Image(systemName: "chevron.down") }
+                .buttonStyle(.borderless).disabled(index == engineOrder.count - 1)
+                .accessibilityLabel("Move \(eng.label) down")
+        }
+    }
+
+    /// Move the engine at `index` by `delta` (−1 up, +1 down), persist, and sync the
+    /// primary engine. Bounds-checked.
+    private func moveEngine(_ index: Int, by delta: Int) {
+        let dest = index + delta
+        guard engineOrder.indices.contains(index), engineOrder.indices.contains(dest) else { return }
+        engineOrder.swapAt(index, dest)
+        services.settings.visionEngineOrder = engineOrder       // setter normalizes + syncs visionEngine
+        visionEngine = engineOrder.first ?? .gemma
     }
 
     /// Long-term memory: the facts the agent always remembers across conversations.

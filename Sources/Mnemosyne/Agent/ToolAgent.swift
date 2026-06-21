@@ -462,9 +462,13 @@ struct ToolAgent: Sendable {
                 }
                 freshThisRound += 1
                 if Self.mutationTools.contains(call.name) { didMutate = true; mutatedThisRound = true }
-                let (resultText, newCites) = await handleTool(
+                let (rawResult, newCites) = await handleTool(
                     name: call.name, args: call.arguments,
                     fallbackQuery: query, citationOffset: citations.count, onStatus: onStatus)
+                // Bound the model-facing result so one huge output (a long web page, a big
+                // file dump) can't blow up context/cost. Citations were already collected
+                // from the full result above, so clamping the text loses no sources.
+                let resultText = Self.clampToolResult(rawResult)
                 executed[sig] = resultText
                 newCitesThisRound += newCites.count
                 citations.append(contentsOf: newCites)
@@ -796,6 +800,20 @@ struct ToolAgent: Sendable {
     /// new citations, and changed nothing. Two such rounds running ⇒ force an answer.
     static func isStall(freshCalls: Int, newCitations: Int, didMutate: Bool) -> Bool {
         freshCalls == 0 && newCitations == 0 && !didMutate
+    }
+
+    /// Bound a single tool result fed back to the model, so one huge output (a long web
+    /// page, a big file dump) can't blow up the agent's context window or cost — a Claude
+    /// Code / Codex best practice. Keeps the head (where the answer usually is) and appends
+    /// a clear truncation marker with the dropped character count, nudging the model to
+    /// narrow its next step. Counted in Characters so multibyte text (CJK) is bounded too.
+    /// Pure → unit-testable.
+    static func clampToolResult(_ s: String, max: Int = 12_000) -> String {
+        guard s.count > max else { return s }
+        let head = String(s.prefix(max))
+        let dropped = s.count - max
+        return head + "\n\n…[truncated \(dropped) characters — result too large. " +
+            "If you need more, use a narrower query/tool, get_item, or summarize_item.]"
     }
 
     /// A stable signature for a tool call so identical calls (even with reordered

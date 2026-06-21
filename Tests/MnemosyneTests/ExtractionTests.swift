@@ -104,6 +104,23 @@ final class ExtractionTests: XCTestCase {
         XCTAssertTrue(text.contains("iWork preview extraction"), "got: \(text.prefix(120))")
     }
 
+    func testEffectiveOrderDrivesIngestFallbackChain() {
+        let ollama = OllamaClient(config: .load())
+        // Explicit order wins and is de-duped/normalized.
+        let a = ContentExtractor(ollama: ollama, multimodal: true,
+                                 visionEngine: .gemma, engineOrder: [.gemma, .claudeCode, .gemma])
+        XCTAssertEqual(a.effectiveOrder, [.gemma, .claudeCode], "configured order drives fallback, deduped")
+
+        // Empty order ⇒ derive the chain from the single primary engine (back-compat).
+        let b = ContentExtractor(ollama: ollama, multimodal: true, visionEngine: .codex)
+        XCTAssertEqual(b.effectiveOrder, [.codex], "no order set ⇒ just the primary engine")
+
+        // Primary is always first, so labels/activity (which read visionEngine) stay correct.
+        let c = ContentExtractor(ollama: ollama, multimodal: true,
+                                 visionEngine: .claudeCode, engineOrder: [.claudeCode, .codex, .gemma])
+        XCTAssertEqual(c.effectiveOrder.first, c.visionEngine, "primary engine leads the chain")
+    }
+
     private func writeTextPDF(_ string: String, to url: URL) throws {
         let data = NSMutableData()
         var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Which engine performs image / scanned-PDF visual understanding during ingest.
-enum VisionEngine: String, CaseIterable, Sendable, Identifiable {
+enum VisionEngine: String, CaseIterable, Sendable, Identifiable, Hashable {
     /// Local Gemma 3 12B via Ollama — private, on-device, default.
     case gemma
     /// The locally-installed `claude` CLI (the user's own Claude Code login) —
@@ -41,6 +41,28 @@ enum VisionEngine: String, CaseIterable, Sendable, Identifiable {
         case .gemma: return false
         case .claudeCode, .codex: return true
         }
+    }
+
+    /// Clean an ordered engine preference list: drop duplicates (keeping first
+    /// position), and guarantee a non-empty result (default `[.gemma]`). Pure →
+    /// unit-testable. Backs the ingest auto-fallback ("try Gemma, then Claude").
+    static func normalizedOrder(_ order: [VisionEngine]) -> [VisionEngine] {
+        var seen = Set<VisionEngine>()
+        let deduped = order.filter { seen.insert($0).inserted }
+        return deduped.isEmpty ? [.gemma] : deduped
+    }
+
+    /// Serialize an order to a stable string for UserDefaults ("gemma,claudeCode").
+    static func encodeOrder(_ order: [VisionEngine]) -> String {
+        normalizedOrder(order).map(\.rawValue).joined(separator: ",")
+    }
+
+    /// Parse an order string back; empty/garbage yields `[]` so the caller can supply
+    /// its own default (e.g. the legacy single-engine setting).
+    static func decodeOrder(_ raw: String) -> [VisionEngine] {
+        let parsed = raw.split(separator: ",").compactMap { VisionEngine(rawValue: String($0)) }
+        var seen = Set<VisionEngine>()
+        return parsed.filter { seen.insert($0).inserted }   // [] when nothing valid parsed
     }
 }
 
@@ -95,6 +117,7 @@ struct SettingsStore: @unchecked Sendable {
         static let model = "mnemosyne.model"
         static let keywordWeight = "mnemosyne.keywordWeight"
         static let visionEngine = "mnemosyne.visionEngine"
+        static let visionEngineOrder = "mnemosyne.visionEngineOrder"
         static let buildEngine = "mnemosyne.buildEngine"
         static let contextBudget = "mnemosyne.contextBudget"
     }
@@ -152,10 +175,28 @@ struct SettingsStore: @unchecked Sendable {
         return ""
     }
 
-    /// Engine used for image / scanned-PDF understanding during ingest.
+    /// Engine used for image / scanned-PDF understanding during ingest. This is the
+    /// PRIMARY engine — it mirrors the first entry of `visionEngineOrder`.
     var visionEngine: VisionEngine {
         get { VisionEngine(rawValue: defaults.string(forKey: Key.visionEngine) ?? "") ?? .gemma }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.visionEngine) }
+    }
+
+    /// Ordered ingest-engine preference with AUTO-FALLBACK: try the first engine; if it
+    /// fails, times out, or returns nothing, the extractor falls through to the next
+    /// (e.g. [Gemma, Claude] → Gemma first, Claude on failure). Always non-empty. Setting
+    /// it keeps the legacy `visionEngine` in sync with the primary (first) entry.
+    var visionEngineOrder: [VisionEngine] {
+        get {
+            let parsed = VisionEngine.decodeOrder(defaults.string(forKey: Key.visionEngineOrder) ?? "")
+            // Fall back to the legacy single-engine setting for users upgrading in place.
+            return VisionEngine.normalizedOrder(parsed.isEmpty ? [visionEngine] : parsed)
+        }
+        nonmutating set {
+            let norm = VisionEngine.normalizedOrder(newValue)
+            defaults.set(VisionEngine.encodeOrder(norm), forKey: Key.visionEngineOrder)
+            if let primary = norm.first { visionEngine = primary }   // keep legacy key in sync
+        }
     }
 
     /// Hybrid search: how much the exact-keyword overlap boosts the vector score

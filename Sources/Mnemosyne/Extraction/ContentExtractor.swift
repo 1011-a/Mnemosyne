@@ -13,20 +13,34 @@ struct ContentExtractor: Sendable {
     let ollama: OllamaClient
     /// When false (Gemma unreachable or missing), skip multimodal steps and degrade gracefully.
     let multimodal: Bool
-    /// Which engine handles image / scanned-PDF understanding.
+    /// The PRIMARY engine (first preference) — used for labels, activity text and logging.
     var visionEngine: VisionEngine = .gemma
+    /// Ordered engine preference with AUTO-FALLBACK. When a higher-priority engine fails,
+    /// times out, or returns nothing, the next one is tried. Empty ⇒ derive from
+    /// `visionEngine` (back-compat). The effective order always starts with `visionEngine`.
+    var engineOrder: [VisionEngine] = []
 
-    /// Route a visual-understanding call to the selected engine. Returns nil when
-    /// the engine is unavailable or fails, so callers degrade gracefully.
+    /// The de-duplicated, non-empty order actually used for fallback.
+    var effectiveOrder: [VisionEngine] {
+        VisionEngine.normalizedOrder(engineOrder.isEmpty ? [visionEngine] : engineOrder)
+    }
+
+    /// Route a visual-understanding call through the engine order: try each in turn,
+    /// returning the first non-empty result. A nil/empty/timed-out engine (the CLI
+    /// clients return nil on timeout) falls through to the next — so a single failure
+    /// never aborts ingest. Returns nil only when EVERY engine came up empty.
     private func describeVisual(_ pngData: Data, prompt: String) async -> String? {
-        switch visionEngine {
-        case .gemma:
-            return try? await ollama.describeImage(pngData, prompt: prompt)
-        case .claudeCode:
-            return await ClaudeCodeClient.describe(pngData: pngData, prompt: prompt)
-        case .codex:
-            return await CodexCliClient.describe(pngData: pngData, prompt: prompt)
+        for engine in effectiveOrder {
+            let result: String?
+            switch engine {
+            case .gemma:      result = try? await ollama.describeImage(pngData, prompt: prompt)
+            case .claudeCode: result = await ClaudeCodeClient.describe(pngData: pngData, prompt: prompt)
+            case .codex:      result = await CodexCliClient.describe(pngData: pngData, prompt: prompt)
+            }
+            if let r = result, !r.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return r }
+            IngestDebugLog.write("vision fallback: \(engine.rawValue) returned nothing — trying next engine")
         }
+        return nil
     }
 
     private static let sparsePageThreshold = 40   // chars below which a PDF page is "scanned"
@@ -113,15 +127,24 @@ struct ContentExtractor: Sendable {
         return parts.joined(separator: "\n\n")
     }
 
+    /// Whole-document reading is a CLI capability (Gemma works per-page via the native
+    /// path). If the PRIMARY engine is Gemma, use the native per-page path (return nil) —
+    /// scanned pages still get the full engine-order fallback through `describeVisual`.
+    /// Otherwise try each CLI engine in the configured order, falling back on
+    /// failure/empty to the next.
     private func readWholeDocument(atPath path: String) async -> String? {
-        switch visionEngine {
-        case .gemma:
-            return nil
-        case .claudeCode:
-            return await ClaudeCodeClient.readDocument(atPath: path)
-        case .codex:
-            return await CodexCliClient.readDocument(atPath: path)
+        guard effectiveOrder.first != .gemma else { return nil }
+        for engine in effectiveOrder where engine != .gemma {
+            let result: String?
+            switch engine {
+            case .claudeCode: result = await ClaudeCodeClient.readDocument(atPath: path)
+            case .codex:      result = await CodexCliClient.readDocument(atPath: path)
+            case .gemma:      continue
+            }
+            if let r = result, !r.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return r }
+            IngestDebugLog.write("doc-read fallback: \(engine.rawValue) returned nothing — trying next engine")
         }
+        return nil
     }
 
     /// iWork bundles (.pages/.key/.numbers) embed a QuickLook PDF preview we can

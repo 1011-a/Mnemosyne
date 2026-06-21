@@ -70,6 +70,51 @@ final class VisionEngineTests: XCTestCase {
         XCTAssertEqual(SettingsStore(defaults: d).contextBudget, 128_000)
     }
 
+    // MARK: ingest auto-fallback ordering
+
+    func testNormalizedOrderDedupesAndNeverEmpty() {
+        XCTAssertEqual(VisionEngine.normalizedOrder([.gemma, .claudeCode, .gemma, .codex, .claudeCode]),
+                       [.gemma, .claudeCode, .codex], "duplicates dropped, first position kept")
+        XCTAssertEqual(VisionEngine.normalizedOrder([]), [.gemma], "empty defaults to the safe local engine")
+        XCTAssertEqual(VisionEngine.normalizedOrder([.codex, .gemma]), [.codex, .gemma], "order preserved")
+    }
+
+    func testEncodeDecodeRoundTrips() {
+        let order: [VisionEngine] = [.claudeCode, .gemma]
+        let encoded = VisionEngine.encodeOrder(order)
+        XCTAssertEqual(encoded, "claudeCode,gemma")
+        XCTAssertEqual(VisionEngine.decodeOrder(encoded), order)
+        // Empty / garbage → [] so callers can supply their own default.
+        XCTAssertTrue(VisionEngine.decodeOrder("").isEmpty)
+        XCTAssertTrue(VisionEngine.decodeOrder("nonsense,more-nonsense").isEmpty)
+        XCTAssertEqual(VisionEngine.decodeOrder("gemma,gemma,codex"), [.gemma, .codex], "decode also dedupes")
+    }
+
+    func testVisionEngineOrderPersistsAndSyncsPrimary() {
+        let d = freshDefaults()
+        let a = SettingsStore(defaults: d)
+        a.visionEngineOrder = [.claudeCode, .gemma]
+        let b = SettingsStore(defaults: d)
+        XCTAssertEqual(b.visionEngineOrder, [.claudeCode, .gemma], "ordered preference round-trips")
+        XCTAssertEqual(b.visionEngine, .claudeCode, "legacy primary stays in sync with the first entry")
+    }
+
+    func testVisionEngineOrderFallsBackToLegacySingleEngine() {
+        // A user upgrading in place has only the old single-engine key set.
+        let d = freshDefaults()
+        d.set("codex", forKey: "mnemosyne.visionEngine")
+        let settings = SettingsStore(defaults: d)
+        XCTAssertEqual(settings.visionEngineOrder, [.codex], "derives the order from the legacy setting")
+    }
+
+    func testCompleteOrderAppendsMissingEngines() {
+        // The reorder UI always shows every engine; a saved subset is completed.
+        let completed = SettingsView.completeOrder([.claudeCode])
+        XCTAssertEqual(completed.first, .claudeCode, "saved preference keeps priority")
+        XCTAssertEqual(Set(completed), Set(VisionEngine.allCases), "every engine is present to rank")
+        XCTAssertEqual(completed.count, VisionEngine.allCases.count, "no duplicates")
+    }
+
     func testBuildEngineExternalCliClassification() {
         XCTAssertFalse(BuildEngine.deepseek.usesExternalCLI, "DeepSeek is native — no CLI")
         XCTAssertTrue(BuildEngine.claude.usesExternalCLI)

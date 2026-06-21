@@ -439,6 +439,25 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testClampToolResultBoundsLargeOutput() {
+        // Small results pass through untouched.
+        let small = "a short tool result"
+        XCTAssertEqual(ToolAgent.clampToolResult(small, max: 100), small)
+        XCTAssertEqual(ToolAgent.clampToolResult(small, max: small.count), small, "exactly at the limit is kept whole")
+
+        // Oversized results are truncated with a marker that names the dropped count.
+        let big = String(repeating: "x", count: 500)
+        let clamped = ToolAgent.clampToolResult(big, max: 100)
+        XCTAssertTrue(clamped.hasPrefix(String(repeating: "x", count: 100)), "keeps the head")
+        XCTAssertTrue(clamped.contains("truncated 400 characters"), "marks how much was dropped")
+        XCTAssertLessThan(clamped.count, big.count, "result is smaller than the original")
+
+        // Character-counted, so multibyte text is bounded too (not just ASCII).
+        let cjk = String(repeating: "字", count: 300)
+        let clampedCJK = ToolAgent.clampToolResult(cjk, max: 50)
+        XCTAssertTrue(clampedCJK.contains("truncated 250 characters"))
+    }
+
     func testLanguageDistributionSortsByCountThenCode() {
         let codes = ["en", "zh-Hans", "en", "fr", "en", "zh-Hans", "", "fr"]
         let dist = ToolAgent.languageDistribution(codes)
