@@ -191,6 +191,7 @@ struct ToolAgent: Sendable {
     • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
     • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
     • quick_summary(item) — instant extractive summary (top sentences, no AI model, offline).
+    • extract_key_values(item) — pull 'Key: Value' metadata pairs (Status: Done, Due: Friday).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -293,6 +294,8 @@ struct ToolAgent: Sendable {
             tool("task_progress", "Measure a markdown CHECKLIST's completion in a file — counts done vs pending boxes ([x] vs [ ]) and a percent-complete. Unlike extract_action_items (only open TODOs), this reports the whole list including finished items.",
                  ["item": item], required: ["item"]),
             tool("quick_summary", "An INSTANT extractive summary of a file — picks its most salient existing sentences by word-frequency, no AI model (works offline, no API key). Faster/cheaper than summarize_item; use it for a quick gist or when the model is unavailable.",
+                 ["item": item], required: ["item"]),
+            tool("extract_key_values", "Pull 'Key: Value' METADATA pairs from a file — note headers / front-matter like 'Status: Done', 'Due: Friday', 'Owner: Sam'. Excludes times and URLs. Use to read a note's structured fields.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1758,6 +1761,17 @@ struct ToolAgent: Sendable {
                 return ("'\(it.title)' has no text to summarize.", [])
             }
             return ("Quick summary of '\(it.title)' (extractive, offline):\n\(summary)", [])
+
+        case "extract_key_values":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Reading fields in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = KeyValueExtractor.summary(text) else {
+                return ("No 'Key: Value' metadata fields found in '\(it.title)'.", [])
+            }
+            return ("Fields in '\(it.title)':\n\(summary)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
