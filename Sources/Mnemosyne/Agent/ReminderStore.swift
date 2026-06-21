@@ -29,6 +29,18 @@ struct ReminderStore: Sendable {
         return open + done
     }
 
+    /// Open reminders whose freeform `due` parses to a real DATE at or before `now + days`
+    /// (overdue or due soon), earliest first. Reminders that are done, have no due, or whose
+    /// due isn't a parseable date ("tomorrow", "Fri") are excluded. Pure → unit-testable.
+    static func dueSoon(_ reminders: [Reminder], within days: Int, now: Date) -> [Reminder] {
+        let horizon = now.addingTimeInterval(Double(Swift.max(0, days)) * 86_400 + 86_400)   // include the end day
+        let dated: [(Reminder, Date)] = reminders.compactMap { r in
+            guard !r.done, let due = r.due, let d = DateExtractor.parse(due) else { return nil }
+            return (r, d)
+        }
+        return dated.filter { $0.1 < horizon }.sorted { $0.1 < $1.1 }.map { $0.0 }
+    }
+
     /// Add a new open reminder and persist. `idSeed` makes ids deterministic in
     /// tests; production passes a UUID.
     @discardableResult

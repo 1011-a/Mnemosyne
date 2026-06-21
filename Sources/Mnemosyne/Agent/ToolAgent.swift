@@ -386,6 +386,8 @@ struct ToolAgent: Sendable {
             tool("unpin_fact", "Remove a fact from long-term memory (by its text or part of it).",
                  ["fact": ["type": "string", "description": "The pinned fact (or part) to remove."]], required: ["fact"]),
             tool("list_reminders", "List the user's open (and recently completed) reminders / deferred tasks.", [:]),
+            tool("due_reminders", "List open reminders that are DUE SOON or OVERDUE — those whose due date falls within the next N days — earliest first. Use for 'what's due', 'what's coming up', 'anything overdue'.",
+                 ["days": ["type": "integer", "description": "Look-ahead window in days (default 7). Overdue items always included."]]),
             tool("complete_reminder", "Mark a reminder / deferred task as done (by its title or part of it).",
                  ["reminder": ["type": "string", "description": "Title (or part) of the reminder to complete."]],
                  required: ["reminder"]),
@@ -2159,6 +2161,21 @@ struct ToolAgent: Sendable {
             let doneRecent = all.filter { $0.done }.prefix(3)
             let doneText = doneRecent.isEmpty ? "" : "\n\nRecently done:\n" + doneRecent.map(line).joined(separator: "\n")
             return ("Open tasks (\(open.count)):\n\(openText)\(doneText)", [])
+
+        case "due_reminders":
+            onStatus("Checking what's due…")
+            let days = Int(arg("days") ?? "") ?? 7
+            let now = Date()
+            let due = ReminderStore.dueSoon(reminders.all(), within: days, now: now)
+            guard !due.isEmpty else {
+                return ("Nothing with a dated due in the next \(days) day(s). (Reminders with vague dues like 'tomorrow' aren't date-tracked.)", [])
+            }
+            func line(_ r: Reminder) -> String {
+                let d = r.due.flatMap(DateExtractor.parse)
+                let overdue = (d.map { $0 < now } ?? false) ? " ⚠️ OVERDUE" : ""
+                return "○ \(r.title) — due \(r.due ?? "?")\(overdue)"
+            }
+            return ("\(due.count) reminder(s) due within \(days) day(s):\n" + due.map(line).joined(separator: "\n"), [])
 
         case "complete_reminder":
             guard let ref = arg("reminder") else { return ("Missing 'reminder'.", []) }

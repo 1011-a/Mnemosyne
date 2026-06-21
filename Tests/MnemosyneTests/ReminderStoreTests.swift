@@ -8,6 +8,30 @@ final class ReminderStoreTests: XCTestCase {
         return ReminderStore(path: dir.appendingPathComponent("reminders.json").path)
     }
 
+    func testDueSoonFiltersDatedAndSortsEarliestFirst() {
+        let now = ToolAgent.parseISODate("2026-06-15")!
+        func r(_ id: String, _ title: String, due: String?, done: Bool = false) -> Reminder {
+            Reminder(id: id, title: title, due: due, done: done, createdAt: now)
+        }
+        let reminders = [
+            r("a", "overdue task", due: "2026-06-10"),       // past → included (overdue)
+            r("b", "due in 3 days", due: "2026-06-18"),       // within 7d → included
+            r("c", "far future", due: "2026-09-01"),          // beyond 7d → excluded
+            r("d", "vague", due: "tomorrow"),                 // unparseable → excluded
+            r("e", "no due", due: nil),                       // no due → excluded
+            r("f", "done one", due: "2026-06-16", done: true), // done → excluded
+        ]
+        let due = ReminderStore.dueSoon(reminders, within: 7, now: now)
+        XCTAssertEqual(due.map(\.id), ["a", "b"], "overdue + due-soon, earliest first; others excluded")
+    }
+
+    func testDueSoonEmptyWhenNothingDated() {
+        let now = Date()
+        let reminders = [Reminder(id: "x", title: "t", due: "someday", done: false, createdAt: now)]
+        XCTAssertTrue(ReminderStore.dueSoon(reminders, within: 30, now: now).isEmpty)
+        XCTAssertTrue(ReminderStore.dueSoon([], within: 7, now: now).isEmpty)
+    }
+
     func testAddPersistsAndReloads() throws {
         let s = try tempStore()
         s.add(title: "Follow up on the budget", due: "tomorrow", idSeed: "r1")
