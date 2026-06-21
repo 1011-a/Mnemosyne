@@ -187,6 +187,7 @@ struct ToolAgent: Sendable {
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
     • inspect_json(item) — describe a JSON file's shape: keys, value types, array lengths, nesting.
+    • json_value(item, path) — extract a value by path (address.city, items[0].id, [2]).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -281,6 +282,9 @@ struct ToolAgent: Sendable {
                  required: ["item", "where"]),
             tool("inspect_json", "Describe the SHAPE/schema of a JSON file (config, API export, log) — top-level type, keys with their value types, array lengths, and nesting. Use to understand an export's structure before reasoning about it.",
                  ["item": item], required: ["item"]),
+            tool("json_value", "Extract the value at a path from a JSON file — dot/bracket syntax like 'address.city', 'items[0].id', or '[2]'. Scalars are returned literally; objects/arrays as compact JSON. Call inspect_json first to see the structure.",
+                 ["item": item, "path": ["type": "string", "description": "A dot/bracket path, e.g. 'user.name' or 'results[0].score'."]],
+                 required: ["item", "path"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("sentiment", "Gauge the emotional TONE of a file (how positive/negative) — useful for reviews, feedback, or journal entries. Returns a label and a −1…+1 score. On-device, offline.",
@@ -1698,6 +1702,20 @@ struct ToolAgent: Sendable {
                 return ("'\(it.title)' doesn't parse as JSON.", [])
             }
             return ("JSON shape of '\(it.title)':\n\(shape)", [])
+
+        case "json_value":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            guard let path = arg("path"), !path.isEmpty else { return ("Missing 'path'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Reading \(path) from \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            switch JSONPath.query(text, path: path) {
+            case .badJSON: return ("'\(it.title)' doesn't parse as JSON.", [])
+            case .badPath: return ("Couldn't parse the path '\(path)'. Use dot/bracket syntax like 'address.city' or 'items[0].id'.", [])
+            case .notFound: return ("No value at '\(path)' in '\(it.title)' (missing key or out-of-range index). Try inspect_json to see the structure.", [])
+            case .found(let value): return ("\(path) = \(value)", [])
+            }
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
