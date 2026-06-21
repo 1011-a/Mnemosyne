@@ -214,6 +214,7 @@ struct ToolAgent: Sendable {
     • format_json(json, mode) — pretty-print or minify a JSON string.
     • sort_lines(text, …) — sort lines (alpha/numeric, reverse, unique).
     • compare_lists(a, b, mode) — set ops on two lists (common/only_a/only_b/union).
+    • strip_markdown(text) — remove markdown formatting to get plain prose.
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -393,6 +394,9 @@ struct ToolAgent: Sendable {
                   "b": ["type": "string", "description": "List B, one item per line."],
                   "mode": ["type": "string", "enum": ["common", "only_a", "only_b", "union"], "description": "The set operation (default common)."]],
                  required: ["a", "b"]),
+            tool("strip_markdown", "Strip markdown formatting from text to get plain prose — removes headings, bold/italic, links, images, inline code, bullets, and quotes. Use to get a clean text version.",
+                 ["text": ["type": "string", "description": "The markdown text to strip."]],
+                 required: ["text"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2125,6 +2129,12 @@ struct ToolAgent: Sendable {
             }
             guard !result.isEmpty else { return ("No items in the '\(mode)' result.", []) }
             return ("\(result.count) item(s) (\(mode)):\n" + result.map { "  \($0)" }.joined(separator: "\n"), [])
+
+        case "strip_markdown":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let plain = MarkdownStripper.strip(text).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !plain.isEmpty else { return ("Nothing left after stripping markdown.", []) }
+            return (plain, [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
