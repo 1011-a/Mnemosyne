@@ -205,6 +205,7 @@ struct ToolAgent: Sendable {
     • parse_url(url) — break a URL into scheme/host/path/query params/fragment (decoded).
     • slugify(text) — make a URL/filename-safe slug from a string (accents folded, punctuation collapsed).
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
+    • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
     • make_table(data) — format rows into an aligned markdown table (first row = header).
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
@@ -343,6 +344,10 @@ struct ToolAgent: Sendable {
                  required: ["text"]),
             tool("hash_text", "Compute the SHA-256 fingerprint of some text — for checksums, deduplication, or checking whether two pieces of text are identical. Returns the full hex hash and a short 8-char fingerprint.",
                  ["text": ["type": "string", "description": "The text to hash."]],
+                 required: ["text"]),
+            tool("base64", "Base64-encode or -decode text. Set mode to 'encode' (default) or 'decode'. Use for data URIs, tokens, or decoding an encoded snippet.",
+                 ["text": ["type": "string", "description": "The text to encode, or the base64 to decode."],
+                  "mode": ["type": "string", "enum": ["encode", "decode"], "description": "encode (default) or decode."]],
                  required: ["text"]),
             tool("bar_chart", "Render a horizontal ASCII bar chart to VISUALIZE numbers in the chat — pass 'label: value' pairs (comma- or newline-separated), e.g. 'Jan: 8, Feb: 5, Mar: 3'. Great for showing column stats, trends, or tallies you computed.",
                  ["data": ["type": "string", "description": "Label:value pairs, comma- or newline-separated, e.g. 'Q1: 12, Q2: 19'. Plain numbers only (no thousands separators)."]],
@@ -1991,6 +1996,16 @@ struct ToolAgent: Sendable {
         case "hash_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             return ("SHA-256: \(HashUtil.sha256(text))\nShort: \(HashUtil.short(text))", [])
+
+        case "base64":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            if (arg("mode") ?? "encode").lowercased() == "decode" {
+                guard let decoded = Base64Util.decode(text) else {
+                    return ("That isn't valid base64 (or the bytes aren't UTF-8 text).", [])
+                }
+                return (decoded, [])
+            }
+            return (Base64Util.encode(text), [])
 
         case "make_table":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (rows of cells).", []) }
