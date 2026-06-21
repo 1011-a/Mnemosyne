@@ -6,7 +6,12 @@ import Speech
 /// ingestion degrades gracefully (the file is simply skipped).
 enum AudioTranscriber {
 
-    static func transcribe(_ url: URL) async -> String? {
+    /// Transcribe an audio file, giving up after `timeout` seconds. The timeout is
+    /// essential: on-device recognition runs roughly in real time, and a long file —
+    /// especially MUSIC, which has no speech to transcribe — would otherwise hold up the
+    /// whole ingest on one file (the "stuck" symptom). On timeout the recognition task is
+    /// cancelled and the file is skipped (returns nil), so ingest moves on.
+    static func transcribe(_ url: URL, timeout: TimeInterval = 45) async -> String? {
         let status = await authorize()
         guard status == .authorized else { return nil }
         guard let recognizer = SFSpeechRecognizer(), recognizer.isAvailable else { return nil }
@@ -16,17 +21,19 @@ enum AudioTranscriber {
         request.shouldReportPartialResults = false
 
         return await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
-            // Hold the recognizer alive for the duration of the task.
             let holder = TaskHolder()
+            holder.resume = { cont.resume(returning: $0) }
             holder.task = recognizer.recognitionTask(with: request) { result, error in
-                if error != nil {
-                    holder.finish { cont.resume(returning: nil) }
-                    return
-                }
+                if error != nil { holder.finish(nil); return }
                 if let result, result.isFinal {
                     let text = result.bestTranscription.formattedString
-                    holder.finish { cont.resume(returning: text.isEmpty ? nil : text) }
+                    holder.finish(text.isEmpty ? nil : text)
                 }
+            }
+            // Watchdog: give up (and cancel the task) so one file can't block ingest.
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                holder.finish(nil)
             }
         }
     }
@@ -37,16 +44,20 @@ enum AudioTranscriber {
         }
     }
 
-    /// Serializes the single resume and retains the recognition task.
+    /// Resumes the continuation exactly once (from the recognizer callback OR the
+    /// timeout watchdog), cancelling the recognition task on the way out.
     private final class TaskHolder: @unchecked Sendable {
         var task: SFSpeechRecognitionTask?
+        var resume: ((String?) -> Void)?
         private var done = false
         private let lock = NSLock()
-        func finish(_ resume: () -> Void) {
+        func finish(_ value: String?) {
             lock.lock(); defer { lock.unlock() }
             guard !done else { return }
             done = true
-            resume()
+            task?.cancel()
+            resume?(value)
+            resume = nil
         }
     }
 }

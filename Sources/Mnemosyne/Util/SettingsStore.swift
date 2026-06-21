@@ -1,5 +1,27 @@
 import Foundation
 
+/// The scene shown in the Ingest "Live activity" panel — user-selectable.
+enum LiveActivityTheme: String, CaseIterable, Sendable, Identifiable {
+    /// Retro pixel skyline whose windows light up as files index (the original).
+    case pixelCity
+    /// A warm starry night: stars light up with activity over a family stargazing.
+    case starrySky
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .pixelCity: return "Knowledge City"
+        case .starrySky: return "Starry Night"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .pixelCity: return "building.2.fill"
+        case .starrySky: return "sparkles"
+        }
+    }
+}
+
 /// Which engine performs image / scanned-PDF visual understanding during ingest.
 enum VisionEngine: String, CaseIterable, Sendable, Identifiable, Hashable {
     /// Local Gemma 3 12B via Ollama — private, on-device, default.
@@ -120,6 +142,13 @@ struct SettingsStore: @unchecked Sendable {
         static let visionEngineOrder = "mnemosyne.visionEngineOrder"
         static let buildEngine = "mnemosyne.buildEngine"
         static let contextBudget = "mnemosyne.contextBudget"
+        static let liveActivityTheme = "mnemosyne.liveActivityTheme"
+    }
+
+    /// Which scene the Ingest "Live activity" panel shows. User-selectable.
+    var liveActivityTheme: LiveActivityTheme {
+        get { LiveActivityTheme(rawValue: defaults.string(forKey: Key.liveActivityTheme) ?? "") ?? .pixelCity }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Key.liveActivityTheme) }
     }
 
     /// Conversation context budget in tokens. NOT user-tunable: the agent handles its own

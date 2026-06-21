@@ -13,6 +13,8 @@ struct IngestView: View {
     /// Throttle state for live suggestion refresh while files are landing.
     @State private var suggestionBucket = -1
     @State private var refreshingSuggestions = false
+    /// Selected Live-activity scene (persisted in settings).
+    @State private var activityTheme: LiveActivityTheme = .pixelCity
 
     var body: some View {
         ScrollView {
@@ -64,10 +66,33 @@ struct IngestView: View {
                         .frame(width: 7, height: 7)
                     Text("Live activity").font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                     Spacer()
+                    // Theme selector — choose the Live-activity scene.
+                    Menu {
+                        ForEach(LiveActivityTheme.allCases) { theme in
+                            Button {
+                                activityTheme = theme
+                                services.settings.liveActivityTheme = theme
+                            } label: {
+                                Label(theme.label, systemImage: activityTheme == theme ? "checkmark" : theme.icon)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: activityTheme.icon).font(.system(size: 10))
+                            Text(activityTheme.label).font(DS.Typo.caption)
+                            Image(systemName: "chevron.down").font(.system(size: 8))
+                        }
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .help("Choose the live-activity scene")
                     Text(progress.isRunning ? "building…" : "idle").font(DS.Typo.mono)
                         .foregroundStyle(progress.isRunning ? DS.ColorToken.success : DS.ColorToken.textTertiary)
                 }
-                PixelCityView(progress: progress)
+                switch activityTheme {
+                case .pixelCity: PixelCityView(progress: progress)
+                case .starrySky: StarrySkyView(progress: progress)
+                }
             }
 
             if !suggestions.isEmpty {
@@ -115,6 +140,7 @@ struct IngestView: View {
         // Keep the persisted "in knowledge base" count fresh: on open, and each
         // time a run completes (so it climbs as files finish indexing).
         .task {
+            activityTheme = services.settings.liveActivityTheme
             await services.refreshLibraryCount()
             ollamaStatus = await services.refreshOllamaStatus()
             suggestions = await SuggestionEngine.suggestions(from: services.store, limit: 4)
