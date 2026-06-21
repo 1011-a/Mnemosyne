@@ -197,6 +197,7 @@ struct ToolAgent: Sendable {
     • key_phrases(item) — recurring multi-word topics (bigrams/trigrams), richer than keyword_extract.
     • extract_amounts(item) — pull monetary amounts ($, €, USD…) and total them per currency.
     • extract_definitions(item) — pull definition sentences (X means Y, HTTP stands for…) into a glossary.
+    • extract_mentions(item) — pull #hashtags and @mentions with counts (ignores emails/headings).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -311,6 +312,8 @@ struct ToolAgent: Sendable {
             tool("extract_amounts", "Pull MONETARY amounts from a file (receipts, invoices, expense notes) — $1,200.50, €30, 45 USD — and total them per currency. Use to answer 'how much in total?' or list the charges in a document.",
                  ["item": item], required: ["item"]),
             tool("extract_definitions", "Pull DEFINITION sentences from a file ('X means Y', 'HTTP stands for…', 'a vector is an…') to build a glossary. Offline and pure (define_term does a single model lookup instead).",
+                 ["item": item], required: ["item"]),
+            tool("extract_mentions", "Pull #hashtags and @mentions from a file with their counts — note tags and people. Correctly ignores email addresses and markdown headings.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1842,6 +1845,17 @@ struct ToolAgent: Sendable {
                 return ("No definition sentences found in '\(it.title)'.", [])
             }
             return ("Glossary from '\(it.title)':\n\(summary)", [])
+
+        case "extract_mentions":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding tags & mentions in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = HashtagExtractor.summary(text) else {
+                return ("No #hashtags or @mentions found in '\(it.title)'.", [])
+            }
+            return ("'\(it.title)':\n\(summary)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
