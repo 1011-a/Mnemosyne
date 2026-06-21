@@ -212,6 +212,7 @@ struct ToolAgent: Sendable {
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
+    • sort_lines(text, …) — sort lines (alpha/numeric, reverse, unique).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -380,6 +381,12 @@ struct ToolAgent: Sendable {
                  ["json": ["type": "string", "description": "The JSON text to format."],
                   "mode": ["type": "string", "enum": ["pretty", "minify"], "description": "pretty (default) or minify."]],
                  required: ["json"]),
+            tool("sort_lines", "Sort the lines of a block of text — alphabetical by default. Set numeric=true to sort by number, descending=true to reverse, unique=true to drop duplicates. Blank lines are removed.",
+                 ["text": ["type": "string", "description": "The lines to sort (one per line)."],
+                  "numeric": ["type": "boolean", "description": "Sort by numeric value (default false)."],
+                  "descending": ["type": "boolean", "description": "Reverse order (default false)."],
+                  "unique": ["type": "boolean", "description": "Remove duplicate lines (default false)."]],
+                 required: ["text"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2095,6 +2102,14 @@ struct ToolAgent: Sendable {
                 return ("That isn't valid JSON (needs a top-level object or array).", [])
             }
             return ("```json\n\(out)\n```", [])
+
+        case "sort_lines":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            func flag(_ k: String) -> Bool { (arg(k) ?? "false").lowercased() == "true" }
+            let sorted = LineSorter.sort(text, descending: flag("descending"),
+                                         unique: flag("unique"), numeric: flag("numeric"))
+            guard !sorted.isEmpty else { return ("No non-blank lines to sort.", []) }
+            return (sorted, [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
