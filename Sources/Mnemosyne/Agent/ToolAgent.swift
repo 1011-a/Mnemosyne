@@ -180,6 +180,7 @@ struct ToolAgent: Sendable {
     • extract_phone_numbers(item) — pull phone numbers from a file (contacts), alongside extract_emails.
     • extract_questions(item) — pull the questions a file raises (FAQ / study / interview prep).
     • extract_acronyms(item) — pull acronyms (+ expansions when present) to build a glossary.
+    • extract_code_blocks(item) — pull fenced code snippets (with language) from a file.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -257,6 +258,8 @@ struct ToolAgent: Sendable {
             tool("extract_questions", "Pull the QUESTIONS out of a file — turn a document into an FAQ, study deck, or interview-prep list ('what questions does this raise/ask').",
                  ["item": item], required: ["item"]),
             tool("extract_acronyms", "Pull the ACRONYMS / initialisms out of a file (API, HTTP, TCP…) and their spelled-out expansions when present — build a glossary or decode jargon.",
+                 ["item": item], required: ["item"]),
+            tool("extract_code_blocks", "Pull the fenced CODE SNIPPETS (```lang … ```) out of a file, with their language — 'show me the code in this doc', build a snippet library.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1578,6 +1581,17 @@ struct ToolAgent: Sendable {
                 return ("No acronyms found in '\(it.title)'.", [])
             }
             return ("Acronyms in '\(it.title)': \(summary)", [])
+
+        case "extract_code_blocks":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding code snippets in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = CodeBlockExtractor.summary(text) else {
+                return ("No fenced code blocks found in '\(it.title)'.", [])
+            }
+            return ("Code in '\(it.title)':\n\(summary)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
