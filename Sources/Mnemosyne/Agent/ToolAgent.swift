@@ -183,6 +183,7 @@ struct ToolAgent: Sendable {
     • extract_code_blocks(item) — pull fenced code snippets (with language) from a file.
     • document_outline(item) — the file's exact markdown heading table-of-contents, instant + free.
     • find_in_item(item, query) — grep one file for a phrase; returns matching lines with line numbers.
+    • read_frontmatter(item) — parse a note's leading '---' YAML metadata block into fields.
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
     • csv_to_table(item) — render a CSV/TSV file as an aligned markdown table (first 30 rows).
@@ -283,6 +284,8 @@ struct ToolAgent: Sendable {
             tool("find_in_item", "Find the lines in ONE file that contain a phrase (case-insensitive) — a within-document grep with line numbers. Use for 'where does this note mention X?' (search_knowledge searches across files instead).",
                  ["item": item, "query": ["type": "string", "description": "The phrase/substring to find within the file."]],
                  required: ["item", "query"]),
+            tool("read_frontmatter", "Read the YAML-style frontmatter (the leading '---' metadata block) of a note — keys like title, tags, date. Distinct from extract_key_values (which scans the whole file).",
+                 ["item": item], required: ["item"]),
             tool("keyword_extract", "Surface a file's most salient TERMS by frequency (a quick topical fingerprint) — useful to suggest labels or grasp what a document is about at a glance.",
                  ["item": item], required: ["item"]),
             tool("extract_links", "Pull all the web LINKS (http/https URLs) out of a file — for collecting references or following sources.",
@@ -1659,6 +1662,17 @@ struct ToolAgent: Sendable {
                 return ("No lines in '\(it.title)' contain '\(query)'.", [])
             }
             return ("In '\(it.title)':\n\(summary)", [])
+
+        case "read_frontmatter":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Reading frontmatter in \(it.title)…")
+            let full = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = Frontmatter.summary(full) else {
+                return ("'\(it.title)' has no frontmatter (a leading '---' metadata block).", [])
+            }
+            return ("'\(it.title)':\n\(summary)", [])
 
         case "keyword_extract":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
