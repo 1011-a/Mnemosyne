@@ -189,6 +189,7 @@ struct ToolAgent: Sendable {
     • inspect_json(item) — describe a JSON file's shape: keys, value types, array lengths, nesting.
     • json_value(item, path) — extract a value by path (address.city, items[0].id, [2]).
     • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
+    • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -287,6 +288,8 @@ struct ToolAgent: Sendable {
                  ["item": item, "path": ["type": "string", "description": "A dot/bracket path, e.g. 'user.name' or 'results[0].score'."]],
                  required: ["item", "path"]),
             tool("text_stats", "Readability + length metrics for a file — word/sentence counts, estimated reading time, and a Flesch Reading Ease score with a plain-language band. Use to answer 'how long is this?' or 'how hard is it to read?'.",
+                 ["item": item], required: ["item"]),
+            tool("task_progress", "Measure a markdown CHECKLIST's completion in a file — counts done vs pending boxes ([x] vs [ ]) and a percent-complete. Unlike extract_action_items (only open TODOs), this reports the whole list including finished items.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1730,6 +1733,17 @@ struct ToolAgent: Sendable {
                 return ("'\(it.title)' has no readable text to measure.", [])
             }
             return ("\(it.title): \(report)", [])
+
+        case "task_progress":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Tallying tasks in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let report = ChecklistAnalyzer.report(text) else {
+                return ("No markdown checklist items (- [ ] / - [x]) found in '\(it.title)'.", [])
+            }
+            return ("\(it.title) — \(report)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
