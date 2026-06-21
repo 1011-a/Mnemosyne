@@ -199,6 +199,7 @@ struct ToolAgent: Sendable {
     • extract_definitions(item) — pull definition sentences (X means Y, HTTP stands for…) into a glossary.
     • extract_mentions(item) — pull #hashtags and @mentions with counts (ignores emails/headings).
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
+    • make_table(data) — format rows into an aligned markdown table (first row = header).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -318,6 +319,9 @@ struct ToolAgent: Sendable {
                  ["item": item], required: ["item"]),
             tool("bar_chart", "Render a horizontal ASCII bar chart to VISUALIZE numbers in the chat — pass 'label: value' pairs (comma- or newline-separated), e.g. 'Jan: 8, Feb: 5, Mar: 3'. Great for showing column stats, trends, or tallies you computed.",
                  ["data": ["type": "string", "description": "Label:value pairs, comma- or newline-separated, e.g. 'Q1: 12, Q2: 19'. Plain numbers only (no thousands separators)."]],
+                 required: ["data"]),
+            tool("make_table", "Format rows into a clean aligned MARKDOWN table — pass newline-separated rows, cells pipe- or comma-separated, first row = header. Use to present a list or result tidily in the chat.",
+                 ["data": ["type": "string", "description": "Newline-separated rows; cells comma- or pipe-separated. First row is the header. E.g. 'Name, Age\\nAda, 36'."]],
                  required: ["data"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1867,6 +1871,13 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse any 'label: value' pairs from the data. Example: 'Jan: 8, Feb: 5'.", [])
             }
             return ("```\n\(chart)\n```", [])
+
+        case "make_table":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (rows of cells).", []) }
+            guard let table = MarkdownTable.make(data) else {
+                return ("Couldn't build a table from the data. Pass newline-separated rows with comma- or pipe-separated cells.", [])
+            }
+            return (table, [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
