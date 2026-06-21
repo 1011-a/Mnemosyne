@@ -181,6 +181,7 @@ struct ToolAgent: Sendable {
     • extract_questions(item) — pull the questions a file raises (FAQ / study / interview prep).
     • extract_acronyms(item) — pull acronyms (+ expansions when present) to build a glossary.
     • extract_code_blocks(item) — pull fenced code snippets (with language) from a file.
+    • document_outline(item) — the file's exact markdown heading table-of-contents, instant + free.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -236,6 +237,8 @@ struct ToolAgent: Sendable {
             tool("summarize_item", "Pull the ENTIRE text of one (possibly large) file and summarize it — more complete than get_item (which truncates). Use when the user asks to summarize/condense/TL;DR a specific document.",
                  ["item": item], required: ["item"]),
             tool("outline_item", "Extract the heading/section OUTLINE (table of contents) of a file — markdown headings, numbered sections, ALL-CAPS headers. Use to grasp a long document's structure before reading it.",
+                 ["item": item], required: ["item"]),
+            tool("document_outline", "The file's EXACT markdown heading hierarchy as an indented table of contents — instant and free (no model). Use to navigate a long markdown doc; complements outline_item (which summarizes).",
                  ["item": item], required: ["item"]),
             tool("keyword_extract", "Surface a file's most salient TERMS by frequency (a quick topical fingerprint) — useful to suggest labels or grasp what a document is about at a glance.",
                  ["item": item], required: ["item"]),
@@ -1476,6 +1479,18 @@ struct ToolAgent: Sendable {
                 return ("No clear headings/sections found in '\(it.title)' — try summarize_item for a prose summary instead.", [])
             }
             return ("Outline of '\(it.title)' (\(headings.count) heading(s)):\n\(Outline.render(headings))", [])
+
+        case "document_outline":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Reading headings in \(it.title)…")
+            let full = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let outline = HeadingExtractor.outline(full) else {
+                return ("No markdown headings (`#`) found in '\(it.title)' — try outline_item for an inferred structure.", [])
+            }
+            let n = HeadingExtractor.extract(full).count
+            return ("Table of contents for '\(it.title)' (\(n) heading\(n == 1 ? "" : "s")):\n\(outline)", [])
 
         case "keyword_extract":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
