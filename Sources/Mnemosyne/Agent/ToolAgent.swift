@@ -68,6 +68,7 @@ struct ToolAgent: Sendable {
     static let mutationTools: Set<String> = [
         "add_tag", "remove_tag", "rename_tag", "delete_tag", "delete_item",
         "tag_search_results", "batch_tag", "reingest", "save_note",
+        "save_search", "delete_saved_search",
         "add_reminder", "complete_reminder", "merge_tags", "suggest_labels", "auto_label_untagged",
         "pin_fact", "unpin_fact",
     ]
@@ -188,6 +189,7 @@ struct ToolAgent: Sendable {
     • library_health / find_duplicates / find_similar_titles / merge_tags / auto_label_untagged — diagnose and tidy the library.
     • library_languages — break the whole library down by language (e.g. English vs Chinese share).
     • catch_me_up — a proactive briefing: recent changes, due/overdue reminders, and tidy-up nudges.
+    • save_search / list_saved_searches / run_saved_search / delete_saved_search — name and recall searches.
     • suggest_connections(item) — find related-but-unlabelled-together files to propose linking (autonomous).
     • suggest_tags_from_neighbors(item) — propose labels from what the file's most similar files are tagged.
     Work in three phases — PLAN, ACT, then answer:
@@ -269,6 +271,17 @@ struct ToolAgent: Sendable {
                  ["limit": ["type": "integer", "description": "Max files to process (default 10)."],
                   "apply": ["type": "boolean", "description": "Set true to APPLY labels to all proposed files. Omit/false = preview."]]),
             tool("list_tags", "List every label/tag in the knowledge base with the number of items carrying each.", [:]),
+            tool("save_search", "SAVE a search query under a name so it can be re-run later — e.g. save 'unpaid invoices' as 'invoices'. Use when the user says 'save this search' or 'remember this query'.",
+                 ["name": ["type": "string", "description": "A short name for the saved search."],
+                  "query": ["type": "string", "description": "The search query to save."]],
+                 required: ["name", "query"]),
+            tool("list_saved_searches", "List the user's saved searches (their names and queries).", [:]),
+            tool("run_saved_search", "Run a previously SAVED search by its name and return the matching files (cited).",
+                 ["search": ["type": "string", "description": "Name (or part) of the saved search to run."]],
+                 required: ["search"]),
+            tool("delete_saved_search", "Delete a saved search by its name.",
+                 ["search": ["type": "string", "description": "Name (or part) of the saved search to delete."]],
+                 required: ["search"]),
             tool("tag_stats", "Label ANALYTICS: per-label usage counts AND which labels frequently appear together (co-occurrence). Use to understand how the library is organized or to spot related topics.", [:]),
             tool("find_by_tag", "List the files that carry a given label/tag.", ["tag": tag], required: ["tag"]),
             tool("summarize_tag", "Summarize ALL files carrying a label into ONE cohesive overview, with citations. Use for 'summarize my <label> notes'.",
@@ -862,6 +875,17 @@ struct ToolAgent: Sendable {
         }.sorted { when($0) > when($1) }
     }
 
+    /// Resolve a saved-search reference to one entry: exact name (case-insensitive) wins,
+    /// else a unique substring match. Returns nil if nothing or several match ambiguously.
+    /// Pure → unit-testable.
+    static func matchSavedSearch(_ ref: String, in searches: [SavedSearch]) -> SavedSearch? {
+        let r = ref.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !r.isEmpty else { return nil }
+        if let exact = searches.first(where: { $0.name.lowercased() == r }) { return exact }
+        let subs = searches.filter { $0.name.lowercased().contains(r) }
+        return subs.count == 1 ? subs.first : nil
+    }
+
     /// Compose an autonomous "catch me up" briefing from the library's signals — recent
     /// changes, due/overdue reminders, and an untagged-tidy nudge. Sections with nothing
     /// to report are omitted (the library line always shows). Pure → unit-testable.
@@ -1189,6 +1213,47 @@ struct ToolAgent: Sendable {
             let tags = (try? await store.allTags()) ?? []
             return tags.isEmpty ? ("No labels yet.", [])
                 : (tags.map { "\($0.tag) (\($0.count))" }.joined(separator: ", "), [])
+
+        case "save_search":
+            guard let name = arg("name")?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+                  let query = arg("query")?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty
+            else { return ("Missing 'name' or 'query'.", []) }
+            onStatus("Saving search '\(name)'…")
+            // Reuse an existing entry's id when the name matches, so re-saving updates it.
+            let existing = Self.matchSavedSearch(name, in: (try? await store.allSavedSearches()) ?? [])
+            let s = SavedSearch(id: existing?.id ?? UUID().uuidString, name: name, query: query, kinds: [], tag: nil)
+            do { try await store.saveSearch(s) } catch { return ("Couldn't save the search.", []) }
+            return ("Saved search '\(name)' → “\(query)”. Run it later with run_saved_search.", [])
+
+        case "list_saved_searches":
+            onStatus("Reading saved searches…")
+            let searches = (try? await store.allSavedSearches()) ?? []
+            guard !searches.isEmpty else { return ("You have no saved searches yet.", []) }
+            return ("\(searches.count) saved search(es):\n" +
+                    searches.map { "• \($0.name) → “\($0.query)”" }.joined(separator: "\n"), [])
+
+        case "run_saved_search":
+            guard let ref = arg("search") else { return ("Missing 'search'.", []) }
+            let searches = (try? await store.allSavedSearches()) ?? []
+            guard let s = Self.matchSavedSearch(ref, in: searches) else {
+                return searches.isEmpty ? ("You have no saved searches yet.", [])
+                    : ("No saved search matches '\(ref)'. You have: \(searches.map(\.name).joined(separator: ", ")).", [])
+            }
+            onStatus("Running saved search '\(s.name)'…")
+            let hits = (try? await store.search(vector: embedder.embed(s.query), queryText: s.query,
+                                                k: topK, keywordWeight: keywordWeight)) ?? []
+            guard !hits.isEmpty else { return ("Saved search '\(s.name)' (“\(s.query)”) matched nothing.", []) }
+            return render(hits, startingAt: citationOffset)
+
+        case "delete_saved_search":
+            guard let ref = arg("search") else { return ("Missing 'search'.", []) }
+            let searches = (try? await store.allSavedSearches()) ?? []
+            guard let s = Self.matchSavedSearch(ref, in: searches) else {
+                return ("No saved search matches '\(ref)'.", [])
+            }
+            onStatus("Deleting saved search '\(s.name)'…")
+            do { try await store.deleteSavedSearch(id: s.id) } catch { return ("Couldn't delete it.", []) }
+            return ("Deleted saved search '\(s.name)'.", [])
 
         case "tag_stats":
             onStatus("Analyzing labels…")

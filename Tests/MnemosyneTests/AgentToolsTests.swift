@@ -466,6 +466,35 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testMatchSavedSearchExactThenUniqueSubstring() {
+        let now = Date()
+        let searches = [
+            SavedSearch(name: "Invoices", query: "unpaid invoices", kinds: [], tag: nil, createdAt: now),
+            SavedSearch(name: "Tax 2025", query: "tax documents 2025", kinds: [], tag: nil, createdAt: now),
+        ]
+        // Exact name wins (case-insensitive).
+        XCTAssertEqual(ToolAgent.matchSavedSearch("invoices", in: searches)?.name, "Invoices")
+        // Unique substring resolves.
+        XCTAssertEqual(ToolAgent.matchSavedSearch("tax", in: searches)?.name, "Tax 2025")
+        // No match / empty ref → nil.
+        XCTAssertNil(ToolAgent.matchSavedSearch("payroll", in: searches))
+        XCTAssertNil(ToolAgent.matchSavedSearch("  ", in: searches))
+        // Ambiguous substring (matches both) → nil.
+        let amb = [SavedSearch(name: "report A", query: "a", kinds: [], tag: nil, createdAt: now),
+                   SavedSearch(name: "report B", query: "b", kinds: [], tag: nil, createdAt: now)]
+        XCTAssertNil(ToolAgent.matchSavedSearch("report", in: amb), "ambiguous substring is not auto-resolved")
+    }
+
+    func testSavedSearchToolsRegisteredAndGated() {
+        let names = ToolAgent.tools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
+        for t in ["save_search", "list_saved_searches", "run_saved_search", "delete_saved_search"] {
+            XCTAssertTrue(names.contains(t), "\(t) is exposed")
+        }
+        XCTAssertTrue(ToolAgent.mutationTools.contains("save_search"))
+        XCTAssertTrue(ToolAgent.mutationTools.contains("delete_saved_search"))
+        XCTAssertFalse(ToolAgent.mutationTools.contains("run_saved_search"), "running a search is read-only")
+    }
+
     func testBriefingComposesSectionsAndOmitsEmpties() {
         let b = ToolAgent.briefing(totalItems: 120, windowDays: 7,
                                    changedRecently: ["a.md", "b.pdf"],
