@@ -40,6 +40,27 @@ enum DateMath {
         return f.string(from: now)
     }
 
+    /// The date `days` after `dateStr` (negative = earlier) as `YYYY-MM-DD`; nil if unparseable.
+    static func addDays(to dateStr: String, days: Int) -> String? {
+        guard let date = parse(dateStr),
+              let result = utcCalendar.date(byAdding: .day, value: days, to: date) else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: result)
+    }
+
+    /// The weekday name ("Monday") for a date, or nil if unparseable.
+    static func weekday(_ dateStr: String) -> String? {
+        guard let date = parse(dateStr) else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "EEEE"
+        return f.string(from: date)
+    }
+
     static func phrase(_ days: Int, from: String, to: String) -> String {
         let n = abs(days)
         let unit = n == 1 ? "day" : "days"

@@ -207,6 +207,7 @@ struct ToolAgent: Sendable {
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
+    • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
     • make_table(data) — format rows into an aligned markdown table (first row = header).
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
@@ -354,6 +355,10 @@ struct ToolAgent: Sendable {
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
                  required: ["from"]),
+            tool("add_days", "Compute the date a number of days from a given date (YYYY-MM-DD) — negative goes backward. Returns the resulting date and its weekday. E.g. 'what's the date 30 days after 2026-06-15?'.",
+                 ["date": ["type": "string", "description": "Start date, YYYY-MM-DD."],
+                  "days": ["type": "integer", "description": "Days to add (negative to subtract)."]],
+                 required: ["date", "days"]),
             tool("bar_chart", "Render a horizontal ASCII bar chart to VISUALIZE numbers in the chat — pass 'label: value' pairs (comma- or newline-separated), e.g. 'Jan: 8, Feb: 5, Mar: 3'. Great for showing column stats, trends, or tallies you computed.",
                  ["data": ["type": "string", "description": "Label:value pairs, comma- or newline-separated, e.g. 'Q1: 12, Q2: 19'. Plain numbers only (no thousands separators)."]],
                  required: ["data"]),
@@ -2019,6 +2024,15 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse the dates — use YYYY-MM-DD.", [])
             }
             return (DateMath.phrase(days, from: from, to: to), [])
+
+        case "add_days":
+            guard let date = arg("date"), !date.isEmpty else { return ("Missing 'date' (YYYY-MM-DD).", []) }
+            guard let n = Int(arg("days") ?? "") else { return ("Missing or invalid 'days' (an integer).", []) }
+            guard let result = DateMath.addDays(to: date, days: n) else {
+                return ("Couldn't parse '\(date)' — use YYYY-MM-DD.", [])
+            }
+            let weekday = DateMath.weekday(result).map { " (\($0))" } ?? ""
+            return ("\(date) + \(n) day\(abs(n) == 1 ? "" : "s") = \(result)\(weekday)", [])
 
         case "make_table":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (rows of cells).", []) }

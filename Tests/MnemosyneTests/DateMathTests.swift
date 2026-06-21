@@ -26,4 +26,19 @@ final class DateMathTests: XCTestCase {
         XCTAssertTrue(DateMath.phrase(1, from: "a", to: "b").contains("1 day after"))   // singular
         XCTAssertTrue(DateMath.phrase(0, from: "x", to: "x").contains("same day"))
     }
+
+    func testAddDaysForwardBackwardAndBoundaries() {
+        XCTAssertEqual(DateMath.addDays(to: "2026-06-15", days: 10), "2026-06-25")
+        XCTAssertEqual(DateMath.addDays(to: "2026-06-15", days: -15), "2026-05-31")
+        XCTAssertEqual(DateMath.addDays(to: "2025-12-31", days: 1), "2026-01-01")
+        XCTAssertNil(DateMath.addDays(to: "bad date", days: 1))
+    }
+
+    func testWeekdayKnownAndConsistentAcrossSevenDays() {
+        XCTAssertEqual(DateMath.weekday("2026-01-01"), "Thursday")     // 2026-01-01 is a Thursday
+        // Adding 7 days lands on the same weekday.
+        let d = "2026-06-15"
+        XCTAssertEqual(DateMath.weekday(DateMath.addDays(to: d, days: 7)!), DateMath.weekday(d))
+        XCTAssertNil(DateMath.weekday("nope"))
+    }
 }
