@@ -195,6 +195,7 @@ struct ToolAgent: Sendable {
     • redact_pii(item) — masked, shareable copy: emails/phones/SSNs → [email]/[phone]/[ssn].
     • scan_secrets(item) — detect leaked credentials (API keys, tokens, private keys), masked.
     • key_phrases(item) — recurring multi-word topics (bigrams/trigrams), richer than keyword_extract.
+    • extract_amounts(item) — pull monetary amounts ($, €, USD…) and total them per currency.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -305,6 +306,8 @@ struct ToolAgent: Sendable {
             tool("scan_secrets", "Scan a file for leaked CREDENTIALS — API keys (AWS/Google), access tokens (GitHub/Slack), PEM private keys, and password/token assignments. Reports findings with the secret MASKED. Use to check a config or code paste before sharing.",
                  ["item": item], required: ["item"]),
             tool("key_phrases", "Extract the recurring multi-word KEY PHRASES (topics) from a file — e.g. 'machine learning', 'quarterly report'. A richer topical fingerprint than keyword_extract (single words). Use to grasp or label what a document is about.",
+                 ["item": item], required: ["item"]),
+            tool("extract_amounts", "Pull MONETARY amounts from a file (receipts, invoices, expense notes) — $1,200.50, €30, 45 USD — and total them per currency. Use to answer 'how much in total?' or list the charges in a document.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1812,6 +1815,17 @@ struct ToolAgent: Sendable {
             let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
             guard let summary = PhraseExtractor.summary(text) else {
                 return ("No recurring multi-word phrases found in '\(it.title)' — try keyword_extract for single terms.", [])
+            }
+            return ("'\(it.title)' — \(summary)", [])
+
+        case "extract_amounts":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Totalling amounts in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = MoneyExtractor.summary(text) else {
+                return ("No monetary amounts found in '\(it.title)'.", [])
             }
             return ("'\(it.title)' — \(summary)", [])
 
