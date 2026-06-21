@@ -210,6 +210,7 @@ struct ToolAgent: Sendable {
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
+    • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -371,6 +372,9 @@ struct ToolAgent: Sendable {
                   "replace": ["type": "string", "description": "The replacement (may be empty to delete)."],
                   "case_insensitive": ["type": "boolean", "description": "Ignore case when matching (default false)."]],
                  required: ["text", "find", "replace"]),
+            tool("extract_json", "Pull valid JSON object(s) or array(s) embedded in a larger text — JSON buried in logs, model output, or prose. Returns each JSON block found.",
+                 ["text": ["type": "string", "description": "The text that may contain JSON."]],
+                 required: ["text"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2071,6 +2075,13 @@ struct ToolAgent: Sendable {
             let (out, count) = TextReplace.replace(text, find: find, with: replacement, caseInsensitive: ci)
             guard count > 0 else { return ("No occurrences of '\(find)' found — text unchanged.", []) }
             return ("\(out)\n\n(\(count) replacement\(count == 1 ? "" : "s"))", [])
+
+        case "extract_json":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let blocks = EmbeddedJSON.candidates(text)
+            guard !blocks.isEmpty else { return ("No valid JSON found in the text.", []) }
+            let body = blocks.map { "```json\n\($0)\n```" }.joined(separator: "\n\n")
+            return ("Found \(blocks.count) JSON block(s):\n\(body)", [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
