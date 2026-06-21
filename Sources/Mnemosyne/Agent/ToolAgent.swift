@@ -185,6 +185,7 @@ struct ToolAgent: Sendable {
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
     • csv_to_table(item) — render a CSV/TSV file as an aligned markdown table (first 30 rows).
+    • csv_to_json(item) — convert a CSV/TSV file into a JSON array of objects (header → keys).
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
     • inspect_json(item) — describe a JSON file's shape: keys, value types, array lengths, nesting.
@@ -292,6 +293,8 @@ struct ToolAgent: Sendable {
             tool("inspect_csv", "Parse a CSV or TSV file (spreadsheet/export) into columns and rows — auto-detects the delimiter, handles quoted fields with embedded commas/newlines. Reports the column names, row count, and sample rows.",
                  ["item": item], required: ["item"]),
             tool("csv_to_table", "Render a CSV/TSV file as a clean aligned MARKDOWN table for display in the chat (first N rows). Use when the user wants to SEE a spreadsheet, not just its stats.",
+                 ["item": item], required: ["item"]),
+            tool("csv_to_json", "Convert a CSV/TSV file into a JSON array of objects (header row → keys; values stay strings). Use to reshape a spreadsheet for an API or further processing.",
                  ["item": item], required: ["item"]),
             tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
                  ["item": item, "column": ["type": "string", "description": "The exact column header to analyze (case-insensitive)."]],
@@ -1723,6 +1726,22 @@ struct ToolAgent: Sendable {
             }
             let note = rows.count > maxRows + 1 ? "\n…(\(rows.count - 1 - maxRows) more rows)" : ""
             return ("\(it.title):\n\(table)\(note)", [])
+
+        case "csv_to_json":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Converting \(it.title) to JSON…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            let maxRows = 100
+            let clamped = Array(rows.prefix(maxRows + 1))
+            guard let json = CSVConverter.toJSON(clamped) else {
+                return ("'\(it.title)' has no rows to convert.", [])
+            }
+            let note = rows.count > maxRows + 1 ? "\n…(showing first \(maxRows) of \(rows.count - 1) rows)" : ""
+            return ("\(it.title) as JSON:\n```json\n\(json)\n```\(note)", [])
 
         case "json_to_table":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
