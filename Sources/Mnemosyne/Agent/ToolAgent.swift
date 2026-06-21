@@ -161,6 +161,7 @@ struct ToolAgent: Sendable {
     • extract_action_items(item) — pull TODOs/tasks/commitments out of a note; proactively offer to add_reminder for each.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
+    • find_by_date(start,end,field) — list files whose created/modified date falls in an explicit range.
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
     • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
     Work in three phases — PLAN, ACT, then answer:
@@ -258,6 +259,11 @@ struct ToolAgent: Sendable {
             tool("recent_changes", "List files changed/added within a TIME WINDOW — the last N days (default 7) or since a given date. Use for 'what changed this week', 'what's new since June 1'.",
                  ["days": ["type": "integer", "description": "Look-back window in days (default 7). Ignored if 'since' is set."],
                   "since": ["type": "string", "description": "Optional ISO date (YYYY-MM-DD) to count changes from."]]),
+            tool("find_by_date", "List files whose date falls in an explicit RANGE — e.g. 'what did I save between March 1 and May 31', 'files created in 2025'. Either bound may be omitted for an open-ended range.",
+                 ["start": ["type": "string", "description": "Start ISO date (YYYY-MM-DD), inclusive. Omit for no lower bound."],
+                  "end": ["type": "string", "description": "End ISO date (YYYY-MM-DD), inclusive (whole day). Omit for no upper bound."],
+                  "field": ["type": "string", "description": "Which date to filter on: 'modified' (default) or 'created'."],
+                  "limit": ["type": "integer", "description": "Max files to list (default 25)."]]),
             tool("related_items", "Find files semantically related to a given file.", ["item": item], required: ["item"]),
             tool("reveal_in_finder", "Reveal a file in macOS Finder (opens Finder, selects the file).", ["item": item], required: ["item"]),
             tool("open_file", "Open a file with its default macOS application.", ["item": item], required: ["item"]),
@@ -741,6 +747,23 @@ struct ToolAgent: Sendable {
     static func changedSince(_ items: [KnowledgeItem], _ cutoff: Date) -> [KnowledgeItem] {
         items.filter { Swift.max($0.modifiedAt, $0.createdAt) >= cutoff }
             .sorted { Swift.max($0.modifiedAt, $0.createdAt) > Swift.max($1.modifiedAt, $1.createdAt) }
+    }
+
+    /// Items whose chosen date falls in the inclusive `[start, end]` window, newest
+    /// first. `useModified` picks the modified date (else created); an open-ended bound
+    /// (nil) means "no limit on that side". `end` is taken as the END of that day so a
+    /// same-day `start == end` range still includes items stamped later that day. Pure →
+    /// unit-testable; backs the `find_by_date` tool.
+    static func inDateRange(_ items: [KnowledgeItem], start: Date?, end: Date?,
+                            useModified: Bool) -> [KnowledgeItem] {
+        let endExclusive = end.map { $0.addingTimeInterval(86_400) }   // include the whole end day
+        func when(_ i: KnowledgeItem) -> Date { useModified ? i.modifiedAt : i.createdAt }
+        return items.filter { i in
+            let d = when(i)
+            if let s = start, d < s { return false }
+            if let e = endExclusive, d >= e { return false }
+            return true
+        }.sorted { when($0) > when($1) }
     }
 
     /// Format a date as a YYYY-MM-DD day string (for change listings).
@@ -1310,6 +1333,33 @@ struct ToolAgent: Sendable {
             let list = changed.map { "\($0.title) (\($0.kind.rawValue), \(Self.isoDay(max($0.modifiedAt, $0.createdAt))))" }
                 .joined(separator: "; ")
             return ("\(changed.count) file(s) changed since \(since): \(list)", [])
+
+        case "find_by_date":
+            onStatus("Searching by date…")
+            let start = Self.parseISODate(arg("start"))
+            let end = Self.parseISODate(arg("end"))
+            guard start != nil || end != nil else {
+                return ("Give at least one of 'start' or 'end' (ISO date YYYY-MM-DD).", [])
+            }
+            let useModified = (arg("field")?.lowercased() ?? "modified") != "created"
+            let n = Swift.min(Swift.max(Int(arg("limit") ?? "") ?? 25, 1), 100)
+            let hits = Self.inDateRange((try? await store.allItems()) ?? [],
+                                        start: start, end: end, useModified: useModified)
+            let field = useModified ? "modified" : "created"
+            let range: String = {
+                switch (start, end) {
+                case let (s?, e?): return "\(Self.isoDay(s)) … \(Self.isoDay(e))"
+                case let (s?, nil): return "since \(Self.isoDay(s))"
+                case let (nil, e?): return "up to \(Self.isoDay(e))"
+                default:            return "any time"
+                }
+            }()
+            guard !hits.isEmpty else { return ("No files \(field) in \(range).", []) }
+            let shown = hits.prefix(n)
+            let list = shown.map { "\($0.title) (\($0.kind.rawValue), \(Self.isoDay(useModified ? $0.modifiedAt : $0.createdAt)))" }
+                .joined(separator: "; ")
+            let more = hits.count > shown.count ? " (+\(hits.count - shown.count) more)" : ""
+            return ("\(hits.count) file(s) \(field) in \(range): \(list)\(more)", [])
 
         case "related_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }

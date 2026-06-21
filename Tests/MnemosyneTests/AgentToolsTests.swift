@@ -410,6 +410,35 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(changed.map(\.id), ["fresh", "mid"], "within 7d, newest first; 'old' excluded")
     }
 
+    func testInDateRangeFiltersInclusiveAndSortsNewestFirst() {
+        func day(_ s: String) -> Date { ToolAgent.parseISODate(s)! }
+        func item(_ id: String, created: String, modified: String) -> KnowledgeItem {
+            KnowledgeItem(id: id, path: "/\(id)", title: id, kind: .text, contentHash: id,
+                          byteSize: 1, createdAt: day(created), modifiedAt: day(modified))
+        }
+        let items = [
+            item("jan", created: "2025-01-10", modified: "2025-01-10"),
+            item("mar", created: "2025-03-15", modified: "2025-03-15"),
+            item("may", created: "2025-05-20", modified: "2025-05-20"),
+            item("jul", created: "2025-07-01", modified: "2025-07-01"),
+        ]
+        // Closed range March…May (inclusive), by modified date, newest first.
+        let mid = ToolAgent.inDateRange(items, start: day("2025-03-01"), end: day("2025-05-31"), useModified: true)
+        XCTAssertEqual(mid.map(\.id), ["may", "mar"], "only items in [Mar 1, May 31], newest first")
+
+        // Open-ended lower bound: everything from May onward.
+        let fromMay = ToolAgent.inDateRange(items, start: day("2025-05-01"), end: nil, useModified: true)
+        XCTAssertEqual(fromMay.map(\.id), ["jul", "may"])
+
+        // Same-day range includes an item stamped that day (end is the whole day).
+        let sameDay = ToolAgent.inDateRange(items, start: day("2025-03-15"), end: day("2025-03-15"), useModified: true)
+        XCTAssertEqual(sameDay.map(\.id), ["mar"], "start == end still matches that day's items")
+
+        // The 'created' field is independent of 'modified'.
+        let byCreated = ToolAgent.inDateRange(items, start: nil, end: day("2025-01-31"), useModified: false)
+        XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
+    }
+
     func testParseISODateRejectsGarbage() {
         XCTAssertNotNil(ToolAgent.parseISODate("2026-01-15"))
         XCTAssertNil(ToolAgent.parseISODate("15/01/2026"))
