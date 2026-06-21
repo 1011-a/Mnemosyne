@@ -22,6 +22,12 @@ dist/
 *.pem
 *.p12
 *.mobileprovision
+# App secrets file (normally lives in ~/Library/Application Support/Mnemosyne) — never commit
+secrets.json
+# Local knowledge-base data (never commit the user's indexed content)
+*.sqlite
+*.sqlite-*
+*.db
 
 # Local development notes and generated experiment artifacts
 PROGRESS.md
