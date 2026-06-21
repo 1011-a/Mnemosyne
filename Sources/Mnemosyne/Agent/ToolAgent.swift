@@ -208,6 +208,7 @@ struct ToolAgent: Sendable {
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
+    • change_case(text, mode) — convert text to upper/lower/title/sentence case.
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -359,6 +360,10 @@ struct ToolAgent: Sendable {
             tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
                  ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
                  required: ["data"]),
+            tool("change_case", "Convert text case — set mode to 'upper', 'lower', 'title', or 'sentence'. Use to clean up or normalize a heading or pasted text.",
+                 ["text": ["type": "string", "description": "The text to convert."],
+                  "mode": ["type": "string", "enum": ["upper", "lower", "title", "sentence"], "description": "Target case."]],
+                 required: ["text", "mode"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2043,6 +2048,13 @@ struct ToolAgent: Sendable {
                 return ("No items to turn into a checklist. Pass items one per line.", [])
             }
             return (checklist, [])
+
+        case "change_case":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let mode = arg("mode"), let result = CaseConverter.convert(text, mode: mode) else {
+                return ("Unknown case mode. Use 'upper', 'lower', 'title', or 'sentence'.", [])
+            }
+            return (result, [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
