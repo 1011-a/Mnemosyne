@@ -179,6 +179,7 @@ struct ToolAgent: Sendable {
     • extract_figures(item) — pull monetary amounts and percentages from a file (invoices, budgets, reports).
     • extract_phone_numbers(item) — pull phone numbers from a file (contacts), alongside extract_emails.
     • extract_questions(item) — pull the questions a file raises (FAQ / study / interview prep).
+    • extract_acronyms(item) — pull acronyms (+ expansions when present) to build a glossary.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -254,6 +255,8 @@ struct ToolAgent: Sendable {
             tool("extract_figures", "Pull monetary AMOUNTS ($1,234.56, 50 USD, €10) and PERCENTAGES (15%) out of a file — for invoices, contracts, budgets, reports ('what amounts are in this file').",
                  ["item": item], required: ["item"]),
             tool("extract_questions", "Pull the QUESTIONS out of a file — turn a document into an FAQ, study deck, or interview-prep list ('what questions does this raise/ask').",
+                 ["item": item], required: ["item"]),
+            tool("extract_acronyms", "Pull the ACRONYMS / initialisms out of a file (API, HTTP, TCP…) and their spelled-out expansions when present — build a glossary or decode jargon.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1564,6 +1567,17 @@ struct ToolAgent: Sendable {
             let questions = QuestionExtractor.extract(text)
             guard !questions.isEmpty else { return ("No questions found in '\(it.title)'.", []) }
             return ("\(questions.count) question(s) in '\(it.title)':\n" + questions.map { "• \($0)" }.joined(separator: "\n"), [])
+
+        case "extract_acronyms":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding acronyms in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = AcronymExtractor.summary(text) else {
+                return ("No acronyms found in '\(it.title)'.", [])
+            }
+            return ("Acronyms in '\(it.title)': \(summary)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
