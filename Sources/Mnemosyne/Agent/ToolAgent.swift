@@ -221,6 +221,7 @@ struct ToolAgent: Sendable {
     • strip_markdown(text) — remove markdown formatting to get plain prose.
     • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
+    • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -427,6 +428,9 @@ struct ToolAgent: Sendable {
                   "a": ["type": "number", "description": "First number."],
                   "b": ["type": "number", "description": "Second number."]],
                  required: ["mode", "a", "b"]),
+            tool("roman_numeral", "Convert between Arabic and Roman numerals (1–3999), direction auto-detected. E.g. '1994' → MCMXCIV, or 'IV' → 4.",
+                 ["value": ["type": "string", "description": "A number (1–3999) or a Roman numeral."]],
+                 required: ["value"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2214,6 +2218,13 @@ struct ToolAgent: Sendable {
                 return ("'\(value)' isn't a valid integer (try decimal or 0x/0b/0o-prefixed).", [])
             }
             return (described, [])
+
+        case "roman_numeral":
+            guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
+            guard let out = Roman.convert(value) else {
+                return ("Couldn't convert '\(value)' — use a number 1–3999 or a valid Roman numeral.", [])
+            }
+            return ("\(value) = \(out)", [])
 
         case "percentage":
             guard let mode = arg("mode"),
