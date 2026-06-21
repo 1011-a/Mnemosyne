@@ -11,11 +11,15 @@ struct CustomImageActivityView: View {
     /// Invoked when the user taps to choose / change the image.
     var onChoose: () -> Void
 
+    /// Decoded once and cached — NOT reloaded from disk on every re-render (progress
+    /// updates would otherwise re-decode a large image many times per second).
+    @State private var image: NSImage?
+
     private let totalStars = 90
 
     var body: some View {
         ZStack {
-            if let image = loadImage() {
+            if let image {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -48,6 +52,13 @@ struct CustomImageActivityView: View {
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
             .strokeBorder(DS.ColorToken.borderDefault))
+        .task(id: imagePath) {
+            // Decode off the main thread, then publish — load once per image.
+            let path = imagePath
+            guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { image = nil; return }
+            let loaded = await Task.detached(priority: .userInitiated) { NSImage(contentsOfFile: path) }.value
+            image = loaded
+        }
     }
 
     private var starOverlay: some View {
@@ -94,11 +105,6 @@ struct CustomImageActivityView: View {
             DSButton("Choose image…", icon: "photo", kind: .secondary, action: onChoose)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func loadImage() -> NSImage? {
-        guard !imagePath.isEmpty, FileManager.default.fileExists(atPath: imagePath) else { return nil }
-        return NSImage(contentsOfFile: imagePath)
     }
 
     private func grouped(_ n: Int) -> String {

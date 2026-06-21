@@ -262,25 +262,33 @@ struct IngestView: View {
 
     /// Pick a backdrop image for the Custom Image theme; copy it into Application Support
     /// (so it persists even if the original moves) and switch to the theme.
+    ///
+    /// IMPORTANT: this is invoked from a SwiftUI Menu button. Showing a modal
+    /// `NSOpenPanel.runModal()` while the menu is still dismissing deadlocks/crashes, so
+    /// we defer to the next runloop tick and use the non-blocking `begin` API.
     private func chooseActivityImage() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.image]
-        panel.prompt = "Use image"
-        guard panel.runModal() == .OK, let src = panel.url else { return }
-        let fm = FileManager.default
-        let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Mnemosyne")
-        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        let ext = src.pathExtension.isEmpty ? "png" : src.pathExtension
-        let dest = URL(fileURLWithPath: dir).appendingPathComponent("activity-bg.\(ext)")
-        try? fm.removeItem(at: dest)
-        guard (try? fm.copyItem(at: src, to: dest)) != nil else { return }
-        services.settings.liveActivityImagePath = dest.path
-        services.settings.liveActivityTheme = .customImage
-        activityTheme = .customImage
-        activityImageVersion += 1
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.allowedFileTypes = NSImage.imageTypes   // UTI-free: avoids extra imports
+            panel.prompt = "Use image"
+            panel.begin { response in
+                guard response == .OK, let src = panel.url else { return }
+                let fm = FileManager.default
+                let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Mnemosyne")
+                try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                let ext = src.pathExtension.isEmpty ? "png" : src.pathExtension
+                let dest = URL(fileURLWithPath: dir).appendingPathComponent("activity-bg.\(ext)")
+                try? fm.removeItem(at: dest)
+                guard (try? fm.copyItem(at: src, to: dest)) != nil else { return }
+                services.settings.liveActivityImagePath = dest.path
+                services.settings.liveActivityTheme = .customImage
+                activityTheme = .customImage
+                activityImageVersion += 1
+            }
+        }
     }
 
     private func chooseBookmarks() {
