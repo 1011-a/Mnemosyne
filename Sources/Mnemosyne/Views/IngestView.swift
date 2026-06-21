@@ -15,6 +15,8 @@ struct IngestView: View {
     @State private var refreshingSuggestions = false
     /// Selected Live-activity scene (persisted in settings).
     @State private var activityTheme: LiveActivityTheme = .pixelCity
+    /// Bumped when the custom backdrop image changes, to force a refresh.
+    @State private var activityImageVersion = 0
 
     var body: some View {
         ScrollView {
@@ -72,9 +74,17 @@ struct IngestView: View {
                             Button {
                                 activityTheme = theme
                                 services.settings.liveActivityTheme = theme
+                                // Choosing Custom Image with none set yet → prompt right away.
+                                if theme == .customImage, services.settings.liveActivityImagePath.isEmpty {
+                                    chooseActivityImage()
+                                }
                             } label: {
                                 Label(theme.label, systemImage: activityTheme == theme ? "checkmark" : theme.icon)
                             }
+                        }
+                        if activityTheme == .customImage {
+                            Divider()
+                            Button { chooseActivityImage() } label: { Label("Choose image…", systemImage: "photo") }
                         }
                     } label: {
                         HStack(spacing: 4) {
@@ -92,6 +102,11 @@ struct IngestView: View {
                 switch activityTheme {
                 case .pixelCity: PixelCityView(progress: progress)
                 case .starrySky: StarrySkyView(progress: progress)
+                case .customImage:
+                    CustomImageActivityView(progress: progress,
+                                            imagePath: services.settings.liveActivityImagePath,
+                                            onChoose: chooseActivityImage)
+                        .id(activityImageVersion)
                 }
             }
 
@@ -243,6 +258,29 @@ struct IngestView: View {
         if panel.runModal() == .OK, let url = panel.url {
             services.ingest(folder: url)
         }
+    }
+
+    /// Pick a backdrop image for the Custom Image theme; copy it into Application Support
+    /// (so it persists even if the original moves) and switch to the theme.
+    private func chooseActivityImage() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Use image"
+        guard panel.runModal() == .OK, let src = panel.url else { return }
+        let fm = FileManager.default
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Mnemosyne")
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let ext = src.pathExtension.isEmpty ? "png" : src.pathExtension
+        let dest = URL(fileURLWithPath: dir).appendingPathComponent("activity-bg.\(ext)")
+        try? fm.removeItem(at: dest)
+        guard (try? fm.copyItem(at: src, to: dest)) != nil else { return }
+        services.settings.liveActivityImagePath = dest.path
+        services.settings.liveActivityTheme = .customImage
+        activityTheme = .customImage
+        activityImageVersion += 1
     }
 
     private func chooseBookmarks() {

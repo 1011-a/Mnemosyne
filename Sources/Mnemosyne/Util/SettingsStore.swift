@@ -6,18 +6,23 @@ enum LiveActivityTheme: String, CaseIterable, Sendable, Identifiable {
     case pixelCity
     /// A warm starry night: stars light up with activity over a family stargazing.
     case starrySky
+    /// Your own illustration/photo as the backdrop, with live twinkling stars + counter
+    /// over it — for book-cover-quality art that code can't draw.
+    case customImage
 
     var id: String { rawValue }
     var label: String {
         switch self {
         case .pixelCity: return "Knowledge City"
         case .starrySky: return "Starry Night"
+        case .customImage: return "Custom Image"
         }
     }
     var icon: String {
         switch self {
         case .pixelCity: return "building.2.fill"
         case .starrySky: return "sparkles"
+        case .customImage: return "photo"
         }
     }
 }
@@ -143,12 +148,20 @@ struct SettingsStore: @unchecked Sendable {
         static let buildEngine = "mnemosyne.buildEngine"
         static let contextBudget = "mnemosyne.contextBudget"
         static let liveActivityTheme = "mnemosyne.liveActivityTheme"
+        static let liveActivityImage = "mnemosyne.liveActivityImage"
     }
 
     /// Which scene the Ingest "Live activity" panel shows. User-selectable.
     var liveActivityTheme: LiveActivityTheme {
         get { LiveActivityTheme(rawValue: defaults.string(forKey: Key.liveActivityTheme) ?? "") ?? .pixelCity }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.liveActivityTheme) }
+    }
+
+    /// Path to the user's chosen backdrop image for the Custom Image theme (copied into
+    /// Application Support so it persists). Empty when none is set.
+    var liveActivityImagePath: String {
+        get { defaults.string(forKey: Key.liveActivityImage) ?? "" }
+        nonmutating set { defaults.set(newValue, forKey: Key.liveActivityImage) }
     }
 
     /// Conversation context budget in tokens. NOT user-tunable: the agent handles its own
