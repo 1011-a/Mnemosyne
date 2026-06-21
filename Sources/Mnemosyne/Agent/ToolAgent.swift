@@ -198,6 +198,7 @@ struct ToolAgent: Sendable {
     • extract_amounts(item) — pull monetary amounts ($, €, USD…) and total them per currency.
     • extract_definitions(item) — pull definition sentences (X means Y, HTTP stands for…) into a glossary.
     • extract_mentions(item) — pull #hashtags and @mentions with counts (ignores emails/headings).
+    • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -315,6 +316,9 @@ struct ToolAgent: Sendable {
                  ["item": item], required: ["item"]),
             tool("extract_mentions", "Pull #hashtags and @mentions from a file with their counts — note tags and people. Correctly ignores email addresses and markdown headings.",
                  ["item": item], required: ["item"]),
+            tool("bar_chart", "Render a horizontal ASCII bar chart to VISUALIZE numbers in the chat — pass 'label: value' pairs (comma- or newline-separated), e.g. 'Jan: 8, Feb: 5, Mar: 3'. Great for showing column stats, trends, or tallies you computed.",
+                 ["data": ["type": "string", "description": "Label:value pairs, comma- or newline-separated, e.g. 'Q1: 12, Q2: 19'. Plain numbers only (no thousands separators)."]],
+                 required: ["data"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("sentiment", "Gauge the emotional TONE of a file (how positive/negative) — useful for reviews, feedback, or journal entries. Returns a label and a −1…+1 score. On-device, offline.",
@@ -1856,6 +1860,13 @@ struct ToolAgent: Sendable {
                 return ("No #hashtags or @mentions found in '\(it.title)'.", [])
             }
             return ("'\(it.title)':\n\(summary)", [])
+
+        case "bar_chart":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (label: value pairs).", []) }
+            guard let chart = AsciiChart.render(data) else {
+                return ("Couldn't parse any 'label: value' pairs from the data. Example: 'Jan: 8, Feb: 5'.", [])
+            }
+            return ("```\n\(chart)\n```", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
