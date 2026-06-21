@@ -113,14 +113,29 @@ struct ToolAgent: Sendable {
 
     /// Parse a numbered/bulleted plan into clean step strings.
     static func parsePlan(_ text: String) -> [String] {
-        text.split(separator: "\n").compactMap { line -> String? in
-            let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !t.isEmpty else { return nil }
-            let stripped = t.replacingOccurrences(of: #"^\d+[\.\)]\s*"#, with: "", options: .regularExpression)
+        func strip(_ t: String) -> String {
+            t.replacingOccurrences(of: #"^\d+[\.\)]\s*"#, with: "", options: .regularExpression)
                 .replacingOccurrences(of: #"^[-•*]\s*"#, with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespaces)
-            return stripped.count >= 3 ? stripped : nil
         }
+        let lines = text.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        // Prefer genuine LIST ITEMS (numbered or bulleted) when the model used a list —
+        // this drops the conversational preamble ("Here's the plan:") and closing remarks
+        // ("Let me get started!") that would otherwise inflate the step count + round budget.
+        let marked = lines.filter {
+            $0.range(of: #"^(\d+[\.\)]|[-•*])\s+"#, options: .regularExpression) != nil
+        }
+        let source = marked.count >= 2 ? marked : lines
+        // De-duplicate (case-insensitive), preserving order — repeated steps waste rounds.
+        var seen = Set<String>(); var out: [String] = []
+        for line in source {
+            let s = strip(line)
+            guard s.count >= 3, seen.insert(s.lowercased()).inserted else { continue }
+            out.append(s)
+        }
+        return out
     }
 
     /// Parse the reviewer's single-line decision.

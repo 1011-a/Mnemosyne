@@ -140,6 +140,33 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(plan[3], "create_artifact: a dashboard")
     }
 
+    func testParsePlanDropsPreambleAndClosingWhenListed() {
+        // The model wraps real steps in conversational lines — only the list items count.
+        let plan = ToolAgent.parsePlan("""
+        Sure! Here is the plan I'll follow:
+        1. search_knowledge for the budget files
+        2. extract_figures from each
+        Let me get started now and report back!
+        """)
+        XCTAssertEqual(plan, ["search_knowledge for the budget files", "extract_figures from each"],
+                       "preamble + closing prose dropped; only the 2 numbered steps remain")
+    }
+
+    func testParsePlanDedupesRepeatedSteps() {
+        let plan = ToolAgent.parsePlan("""
+        1. summarize the report
+        2. Summarize the report
+        3. tag it research
+        """)
+        XCTAssertEqual(plan, ["summarize the report", "tag it research"], "case-insensitive duplicate collapsed")
+    }
+
+    func testParsePlanFallsBackToPlainLinesWithoutMarkers() {
+        // No list markers ⇒ keep the substantive plain lines (legacy behavior) + dedupe.
+        let plan = ToolAgent.parsePlan("find the notes\nbuild a summary\nfind the notes")
+        XCTAssertEqual(plan, ["find the notes", "build a summary"])
+    }
+
     /// LIVE: a multi-step goal gets planned and executes multiple tool calls.
     func testAgentPlansAndExecutesMultiStep() async throws {
         try XCTSkipUnless(TestSupport.liveDeepSeekEnabled, "set MNEMO_LIVE_DEEPSEEK=1")
