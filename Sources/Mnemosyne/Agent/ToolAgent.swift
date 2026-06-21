@@ -188,6 +188,7 @@ struct ToolAgent: Sendable {
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
     • inspect_json(item) — describe a JSON file's shape: keys, value types, array lengths, nesting.
     • json_value(item, path) — extract a value by path (address.city, items[0].id, [2]).
+    • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -285,6 +286,8 @@ struct ToolAgent: Sendable {
             tool("json_value", "Extract the value at a path from a JSON file — dot/bracket syntax like 'address.city', 'items[0].id', or '[2]'. Scalars are returned literally; objects/arrays as compact JSON. Call inspect_json first to see the structure.",
                  ["item": item, "path": ["type": "string", "description": "A dot/bracket path, e.g. 'user.name' or 'results[0].score'."]],
                  required: ["item", "path"]),
+            tool("text_stats", "Readability + length metrics for a file — word/sentence counts, estimated reading time, and a Flesch Reading Ease score with a plain-language band. Use to answer 'how long is this?' or 'how hard is it to read?'.",
+                 ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("sentiment", "Gauge the emotional TONE of a file (how positive/negative) — useful for reviews, feedback, or journal entries. Returns a label and a −1…+1 score. On-device, offline.",
@@ -1716,6 +1719,17 @@ struct ToolAgent: Sendable {
             case .notFound: return ("No value at '\(path)' in '\(it.title)' (missing key or out-of-range index). Try inspect_json to see the structure.", [])
             case .found(let value): return ("\(path) = \(value)", [])
             }
+
+        case "text_stats":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Measuring \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let report = TextStats.report(text) else {
+                return ("'\(it.title)' has no readable text to measure.", [])
+            }
+            return ("\(it.title): \(report)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
