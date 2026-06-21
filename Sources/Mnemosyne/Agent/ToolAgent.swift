@@ -163,6 +163,7 @@ struct ToolAgent: Sendable {
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
     • find_by_date(start,end,field) — list files whose created/modified date falls in an explicit range.
     • detect_language(item) — identify what language a file is written in (on-device); use before translate.
+    • readability(item) — Flesch reading-ease (0 hard … 100 easy) to triage how dense a document is.
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
     • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
     • library_languages — break the whole library down by language (e.g. English vs Chinese share).
@@ -223,6 +224,8 @@ struct ToolAgent: Sendable {
             tool("detect_language", "Detect what LANGUAGE a file is written in (with confidence) — useful before translating, or to triage a multilingual library. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("reading_time", "Estimate how long a file takes to read — word count and minutes (~220 wpm).",
+                 ["item": item], required: ["item"]),
+            tool("readability", "Score how DENSE / approachable a file is — Flesch reading-ease (0 hard … 100 easy) with a grade band. Pairs with reading_time to triage a quick skim vs. a slog. English-oriented; on-device.",
                  ["item": item], required: ["item"]),
             tool("suggest_labels", "Propose 3-5 LABELS for a file from its salient terms, reusing existing library labels where they fit. Previews by default; pass apply=true to actually add them.",
                  ["item": item, "apply": ["type": "boolean", "description": "Set true to ADD the suggested labels. Omit/false = preview only."]],
@@ -1253,6 +1256,17 @@ struct ToolAgent: Sendable {
             onStatus("Measuring \(it.title)…")
             let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
             return ("'\(it.title)' — \(ReadingTime.summary(text)).", [])
+
+        case "readability":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Scoring the readability of \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = ReadabilityAnalyzer.summary(text) else {
+                return ("Couldn't score '\(it.title)' (too short, or not English-oriented text — readability is English-based).", [])
+            }
+            return ("Readability of '\(it.title)': " + summary, [])
 
         case "suggest_labels":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
