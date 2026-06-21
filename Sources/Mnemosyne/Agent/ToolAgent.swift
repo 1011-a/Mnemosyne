@@ -186,6 +186,7 @@ struct ToolAgent: Sendable {
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
+    • inspect_json(item) — describe a JSON file's shape: keys, value types, array lengths, nesting.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -278,6 +279,8 @@ struct ToolAgent: Sendable {
             tool("csv_filter", "Select the rows of a CSV/TSV file that match a predicate — e.g. 'status = open', 'amount >= 500', 'name contains da'. Operators: = != > < >= <= contains (numeric when both sides are numbers, else case-insensitive text). Returns the matching rows.",
                  ["item": item, "where": ["type": "string", "description": "A predicate like 'column OP value', e.g. 'amount >= 500' or 'status = open'."]],
                  required: ["item", "where"]),
+            tool("inspect_json", "Describe the SHAPE/schema of a JSON file (config, API export, log) — top-level type, keys with their value types, array lengths, and nesting. Use to understand an export's structure before reasoning about it.",
+                 ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("sentiment", "Gauge the emotional TONE of a file (how positive/negative) — useful for reviews, feedback, or journal entries. Returns a label and a −1…+1 score. On-device, offline.",
@@ -1684,6 +1687,17 @@ struct ToolAgent: Sendable {
                 let body = ("[" + header.joined(separator: " | ") + "]\n" + (preview + more).joined(separator: "\n"))
                 return ("\(matchedRows.count) of \(data.count) rows in '\(it.title)' match '\(predicate)':\n\(body)", [])
             }
+
+        case "inspect_json":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Inspecting JSON in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let shape = JSONInspector.shape(text) else {
+                return ("'\(it.title)' doesn't parse as JSON.", [])
+            }
+            return ("JSON shape of '\(it.title)':\n\(shape)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
