@@ -162,6 +162,7 @@ struct ToolAgent: Sendable {
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
     • find_by_date(start,end,field) — list files whose created/modified date falls in an explicit range.
+    • detect_language(item) — identify what language a file is written in (on-device); use before translate.
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
     • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
     Work in three phases — PLAN, ACT, then answer:
@@ -217,6 +218,8 @@ struct ToolAgent: Sendable {
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("sentiment", "Gauge the emotional TONE of a file (how positive/negative) — useful for reviews, feedback, or journal entries. Returns a label and a −1…+1 score. On-device, offline.",
+                 ["item": item], required: ["item"]),
+            tool("detect_language", "Detect what LANGUAGE a file is written in (with confidence) — useful before translating, or to triage a multilingual library. On-device, offline.",
                  ["item": item], required: ["item"]),
             tool("reading_time", "Estimate how long a file takes to read — word count and minutes (~220 wpm).",
                  ["item": item], required: ["item"]),
@@ -1179,6 +1182,17 @@ struct ToolAgent: Sendable {
                 return ("Couldn't gauge sentiment for '\(it.title)' (no readable text).", [])
             }
             return ("Tone of '\(it.title)': " + summary, [])
+
+        case "detect_language":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Detecting the language of \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = LanguageDetector.summary(text) else {
+                return ("Couldn't detect a language for '\(it.title)' (too little text).", [])
+            }
+            return ("Language of '\(it.title)': " + summary, [])
 
         case "reading_time":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
