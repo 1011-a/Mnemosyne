@@ -165,7 +165,7 @@ struct ToolAgent: Sendable {
     • detect_language(item) — identify what language a file is written in (on-device); use before translate.
     • readability(item) — Flesch reading-ease (0 hard … 100 easy) to triage how dense a document is.
     • pin_fact(fact) — save a DURABLE user fact (name, preferences) to long-term memory so you always recall it.
-    • library_health / find_duplicates / merge_tags / auto_label_untagged — diagnose and tidy the library.
+    • library_health / find_duplicates / find_similar_titles / merge_tags / auto_label_untagged — diagnose and tidy the library.
     • library_languages — break the whole library down by language (e.g. English vs Chinese share).
     • suggest_connections(item) — find related-but-unlabelled-together files to propose linking (autonomous).
     • suggest_tags_from_neighbors(item) — propose labels from what the file's most similar files are tagged.
@@ -246,6 +246,7 @@ struct ToolAgent: Sendable {
             tool("summarize_library", "A one-call DIGEST of the whole knowledge base — totals, kind breakdown, top labels, untagged count, and the newest files. Use for 'what's in my library / give me an overview' or before suggesting what to do next.", [:]),
             tool("library_health", "A one-call HEALTH CHECK — label coverage, untagged count, near-duplicate labels — with concrete cleanup recommendations (auto_label_untagged, merge_tags). Use for 'how organized is my library / what should I clean up'.", [:]),
             tool("find_duplicates", "Find sets of files with IDENTICAL content (exact duplicates) — useful before deleting redundant items.", [:]),
+            tool("find_similar_titles", "Find sets of files with NEAR-DUPLICATE names (versioned or copied — e.g. 'Report final.pdf' vs 'Report final v2.pdf', 'notes (1).txt') even when their content differs. Library hygiene; complements find_duplicates (which needs identical content).", [:]),
             tool("library_themes", "Surface the DOMINANT TOPICS across the whole library (terms appearing in many files) — for 'what are the main themes in my knowledge' or to suggest what to explore.", [:]),
             tool("library_languages", "Break down the WHOLE library by LANGUAGE — what share of files are English vs Chinese vs … — for a multilingual collection. On-device detection.",
                  ["limit": ["type": "integer", "description": "Max files to sample (default 300)."]]),
@@ -751,6 +752,41 @@ struct ToolAgent: Sendable {
             .sorted { $0.count != $1.count ? $0.count > $1.count : ($0.first ?? "") < ($1.first ?? "") }
     }
 
+    /// Normalize a filename so versioned / copied variants collapse to the same key:
+    /// drop the extension, strip version & copy markers ("(1)", "copy", "final", "draft",
+    /// "v2", a trailing standalone number), fold non-alphanumerics to single spaces, and
+    /// lowercase. e.g. "Report Final v2.pdf", "report (1).pdf", "Report copy.docx" → "report".
+    /// Pure → unit-testable.
+    static func normalizedTitleKey(_ title: String) -> String {
+        var s = title.lowercased()
+        if let dot = s.lastIndex(of: "."), dot != s.startIndex {   // drop a real extension
+            let ext = s[s.index(after: dot)...]
+            if ext.count <= 5, ext.allSatisfy({ $0.isLetter || $0.isNumber }) { s = String(s[..<dot]) }
+        }
+        s = s.replacingOccurrences(of: #"\(\s*\d+\s*\)"#, with: " ", options: .regularExpression) // (1)
+        s = s.replacingOccurrences(of: #"\bv\d+\b"#, with: " ", options: .regularExpression)        // v2
+        s = s.replacingOccurrences(of: #"\b(copy|final|draft|latest|new|old)\b"#, with: " ",
+                                    options: .regularExpression)
+        s = s.replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)       // punctuation→space
+        s = s.replacingOccurrences(of: #"\s+\d+\s*$"#, with: " ", options: .regularExpression)        // trailing number
+        return s.split(separator: " ").joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Group titles whose normalized key matches — near-duplicate filenames (versioned or
+    /// copied), as opposed to byte-identical content. Only groups with ≥2 distinct titles
+    /// and a non-empty key are returned, largest first then alphabetical. Pure → testable.
+    static func similarTitleGroups(_ titles: [String]) -> [[String]] {
+        var byKey: [String: [String]] = [:]
+        var seenPerKey: [String: Set<String>] = [:]
+        for t in titles {
+            let key = normalizedTitleKey(t)
+            guard !key.isEmpty else { continue }
+            if seenPerKey[key, default: []].insert(t.lowercased()).inserted { byKey[key, default: []].append(t) }
+        }
+        return byKey.values.filter { $0.count >= 2 }.map { $0.sorted() }
+            .sorted { $0.count != $1.count ? $0.count > $1.count : ($0.first ?? "") < ($1.first ?? "") }
+    }
+
     /// The id of the pinned fact matching `ref` (exact text, then substring), or nil.
     static func pinnedFactMatch(_ ref: String, in facts: [(id: String, fact: String)]) -> String? {
         let key = ref.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1118,6 +1154,14 @@ struct ToolAgent: Sendable {
             guard !groups.isEmpty else { return ("No exact duplicate files found.", []) }
             let text = groups.prefix(20).map { "• \($0.joined(separator: " = "))" }.joined(separator: "\n")
             return ("\(groups.count) set(s) of identical files:\n\(text)", [])
+
+        case "find_similar_titles":
+            onStatus("Scanning for near-duplicate filenames…")
+            let items = (try? await store.allItems()) ?? []
+            let groups = Self.similarTitleGroups(items.map(\.title))
+            guard !groups.isEmpty else { return ("No near-duplicate filenames found.", []) }
+            let text = groups.prefix(20).map { "• \($0.joined(separator: " ~ "))" }.joined(separator: "\n")
+            return ("\(groups.count) set(s) of similarly-named files (may be versions/copies):\n\(text)", [])
 
         case "library_themes":
             onStatus("Finding dominant topics…")

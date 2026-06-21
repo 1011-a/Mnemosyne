@@ -439,6 +439,29 @@ final class AgentToolsTests: XCTestCase {
         XCTAssertEqual(byCreated.map(\.id), ["jan"], "filtering by created date, up to Jan 31")
     }
 
+    func testNormalizedTitleKeyCollapsesVersionsAndCopies() {
+        let k = ToolAgent.normalizedTitleKey
+        XCTAssertEqual(k("Report Final v2.pdf"), "report")
+        XCTAssertEqual(k("report (1).pdf"), "report")
+        XCTAssertEqual(k("Report copy.docx"), "report")
+        XCTAssertEqual(k("report.txt"), "report")
+        XCTAssertEqual(k("Quarterly Budget 2025.xlsx"), "quarterly budget") // trailing year-number stripped
+        // Genuinely different names stay distinct.
+        XCTAssertNotEqual(k("taxes.pdf"), k("recipes.pdf"))
+    }
+
+    func testSimilarTitleGroupsFindsNearDuplicates() {
+        let titles = ["Report final.pdf", "Report final v2.pdf", "report (1).pdf",
+                      "Budget.xlsx", "taxes.txt"]
+        let groups = ToolAgent.similarTitleGroups(titles)
+        XCTAssertEqual(groups.count, 1, "only the three 'report' variants form a group")
+        XCTAssertEqual(groups.first?.count, 3)
+        XCTAssertTrue(groups.first!.contains("Report final v2.pdf"))
+        // Singletons are not reported.
+        XCTAssertFalse(groups.contains { $0.contains("Budget.xlsx") })
+        XCTAssertTrue(ToolAgent.similarTitleGroups(["a.txt", "b.txt"]).isEmpty, "distinct names ⇒ no groups")
+    }
+
     func testParseItemListSplitsTrimsAndDedupes() {
         XCTAssertEqual(ToolAgent.parseItemList("a.txt, b.txt ,c.txt"), ["a.txt", "b.txt", "c.txt"])
         // Newlines also separate; blanks dropped; case-insensitive dedupe keeps first spelling.
