@@ -19,6 +19,13 @@ final class Counter: @unchecked Sendable {
     var value: Int { lock.lock(); defer { lock.unlock() }; return n }
 }
 
+/// Thread-safe collector for observations emitted from the @Sendable hook.
+final class ObservationLog: @unchecked Sendable {
+    private let lock = NSLock(); private var items: [Orchestrator.Observation] = []
+    func append(_ o: Orchestrator.Observation) { lock.lock(); items.append(o); lock.unlock() }
+    var all: [Orchestrator.Observation] { lock.lock(); defer { lock.unlock() }; return items }
+}
+
 final class OrchestratorTests: XCTestCase {
 
     private func tool(_ name: String, returns: String, mutating: Bool = false) -> ClosureTool {
@@ -53,6 +60,26 @@ final class OrchestratorTests: XCTestCase {
         let orch = Orchestrator(client: client)
         _ = try await orch.run(systemPrompt: "s", query: "q", tools: [t])
         XCTAssertEqual(counter.value, 1, "the repeated identical call is not executed again")
+    }
+
+    func testObservationHookReportsEachToolCall() async throws {
+        // Round 1 runs `search` (fresh); round 2 repeats the SAME call (de-duped); then answers.
+        let client = MockClient([
+            Completion(content: nil, toolCalls: [ToolCall(id: "1", name: "search", arguments: #"{"q":"x"}"#)]),
+            Completion(content: nil, toolCalls: [ToolCall(id: "2", name: "search", arguments: #"{"q":"x"}"#)]),
+            Completion(content: "answer"),
+        ])
+        let log = ObservationLog()
+        let orch = Orchestrator(client: client, onObservation: { log.append($0) })
+        _ = try await orch.run(systemPrompt: "s", query: "q", tools: [tool("search", returns: "RESULT")])
+
+        let obs = log.all
+        XCTAssertEqual(obs.count, 2, "one observation per tool call (fresh + repeat)")
+        XCTAssertEqual(obs.first?.toolName, "search")
+        XCTAssertEqual(obs.first?.result, "RESULT")
+        XCTAssertEqual(obs.first?.isRepeat, false, "first call is fresh")
+        XCTAssertEqual(obs.last?.isRepeat, true, "the identical second call is reported as a repeat")
+        XCTAssertEqual(obs.last?.result, "RESULT", "a repeat carries the prior result forward")
     }
 
     func testNoProgressStops() async throws {

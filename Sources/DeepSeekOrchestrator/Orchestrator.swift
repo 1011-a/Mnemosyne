@@ -9,10 +9,27 @@ public struct Orchestrator: Sendable {
     public var maxRounds: Int
     /// Status callback for UI (e.g. "Searching: …"). Optional.
     public var onStatus: @Sendable (String) -> Void
+    /// Fires after EACH tool call with its result — the seam a host uses to collect
+    /// side effects (e.g. citations) as the loop runs, without owning the loop itself.
+    public var onObservation: @Sendable (Observation) -> Void
 
     public init(client: LLMClient, maxRounds: Int = 8,
-                onStatus: @escaping @Sendable (String) -> Void = { _ in }) {
-        self.client = client; self.maxRounds = maxRounds; self.onStatus = onStatus
+                onStatus: @escaping @Sendable (String) -> Void = { _ in },
+                onObservation: @escaping @Sendable (Observation) -> Void = { _ in }) {
+        self.client = client; self.maxRounds = maxRounds
+        self.onStatus = onStatus; self.onObservation = onObservation
+    }
+
+    /// One tool call and its outcome, reported to `onObservation`.
+    public struct Observation: Sendable, Equatable {
+        public let toolName: String
+        public let arguments: String   // raw JSON the model sent
+        public let result: String      // the tool's textual result (or the prior result on a repeat)
+        public let isRepeat: Bool       // true when this exact call already ran this turn (skipped re-execution)
+        public init(toolName: String, arguments: String, result: String, isRepeat: Bool) {
+            self.toolName = toolName; self.arguments = arguments
+            self.result = result; self.isRepeat = isRepeat
+        }
     }
 
     /// Run the loop, then ask for a final tool-free answer. `history` precedes `query`.
@@ -46,6 +63,8 @@ public struct Orchestrator: Sendable {
             for call in completion.toolCalls {
                 let sig = Self.callSignature(name: call.name, arguments: call.arguments)
                 if let prior = executed[sig] {
+                    onObservation(Observation(toolName: call.name, arguments: call.arguments,
+                                              result: prior, isRepeat: true))
                     convo.append(ChatMessage(role: .tool,
                         content: "(Already called \(call.name) with these exact arguments. Result was:\n\(prior)\nDon't repeat it — use it, try different arguments/another tool, or answer.)",
                         toolCallID: call.id))
@@ -58,6 +77,8 @@ public struct Orchestrator: Sendable {
                 if let tool = byName[call.name] { result = await tool.invoke(arguments: call.arguments) }
                 else { result = "Unknown tool '\(call.name)'." }
                 executed[sig] = result
+                onObservation(Observation(toolName: call.name, arguments: call.arguments,
+                                          result: result, isRepeat: false))
                 convo.append(ChatMessage(role: .tool, content: result, toolCallID: call.id))
             }
 
