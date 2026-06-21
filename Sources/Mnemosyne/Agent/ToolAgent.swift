@@ -220,6 +220,7 @@ struct ToolAgent: Sendable {
     • compare_lists(a, b, mode) — set ops on two lists (common/only_a/only_b/union).
     • strip_markdown(text) — remove markdown formatting to get plain prose.
     • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
+    • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -421,6 +422,11 @@ struct ToolAgent: Sendable {
             tool("number_bases", "Show an integer in decimal, hex, binary, and octal. Input may be decimal or prefixed (0x.., 0b.., 0o..). E.g. '255' or '0xff'.",
                  ["value": ["type": "string", "description": "The integer, decimal or 0x/0b/0o-prefixed."]],
                  required: ["value"]),
+            tool("percentage", "Everyday percentage math. mode 'of' → a% of b; 'what_percent' → a is what % of b; 'change' → percent change from a to b. E.g. mode=of, a=10, b=200.",
+                 ["mode": ["type": "string", "enum": ["of", "what_percent", "change"], "description": "Which calculation."],
+                  "a": ["type": "number", "description": "First number."],
+                  "b": ["type": "number", "description": "Second number."]],
+                 required: ["mode", "a", "b"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -2208,6 +2214,25 @@ struct ToolAgent: Sendable {
                 return ("'\(value)' isn't a valid integer (try decimal or 0x/0b/0o-prefixed).", [])
             }
             return (described, [])
+
+        case "percentage":
+            guard let mode = arg("mode"),
+                  let a = Double(arg("a") ?? ""), let b = Double(arg("b") ?? "") else {
+                return ("Need 'mode' and numeric 'a' and 'b'.", [])
+            }
+            switch mode.lowercased() {
+            case "of":
+                return ("\(Percentage.fmt(a))% of \(Percentage.fmt(b)) = \(Percentage.fmt(Percentage.of(a, b)))", [])
+            case "what_percent":
+                guard let p = Percentage.whatPercent(a, of: b) else { return ("Can't divide by zero (b is 0).", []) }
+                return ("\(Percentage.fmt(a)) is \(Percentage.fmt(p))% of \(Percentage.fmt(b))", [])
+            case "change":
+                guard let c = Percentage.change(from: a, to: b) else { return ("Can't compute change from 0.", []) }
+                let sign = c > 0 ? "+" : ""
+                return ("From \(Percentage.fmt(a)) to \(Percentage.fmt(b)) is \(sign)\(Percentage.fmt(c))%", [])
+            default:
+                return ("Unknown mode. Use 'of', 'what_percent', or 'change'.", [])
+            }
 
         case "format_json":
             guard let json = arg("json"), !json.isEmpty else { return ("Missing 'json'.", []) }
