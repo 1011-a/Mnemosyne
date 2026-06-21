@@ -183,6 +183,7 @@ struct ToolAgent: Sendable {
     • extract_code_blocks(item) — pull fenced code snippets (with language) from a file.
     • document_outline(item) — the file's exact markdown heading table-of-contents, instant + free.
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
+    • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
@@ -266,6 +267,8 @@ struct ToolAgent: Sendable {
             tool("extract_code_blocks", "Pull the fenced CODE SNIPPETS (```lang … ```) out of a file, with their language — 'show me the code in this doc', build a snippet library.",
                  ["item": item], required: ["item"]),
             tool("extract_tables", "Pull markdown TABLES out of a file as parsed rows — a doc's densest structured data (specs, schedules, pricing, comparisons). Returns each table's dimensions, headers, and preview rows.",
+                 ["item": item], required: ["item"]),
+            tool("inspect_csv", "Parse a CSV or TSV file (spreadsheet/export) into columns and rows — auto-detects the delimiter, handles quoted fields with embedded commas/newlines. Reports the column names, row count, and sample rows.",
                  ["item": item], required: ["item"]),
             tool("entity_extract", "Pull the NAMED ENTITIES (people, organizations, places) mentioned in a file — answer 'who/what is mentioned here', build contact or topic lists. On-device, offline.",
                  ["item": item], required: ["item"]),
@@ -1621,6 +1624,17 @@ struct ToolAgent: Sendable {
                 return ("No markdown tables found in '\(it.title)'.", [])
             }
             return ("Tables in '\(it.title)':\n\(summary)", [])
+
+        case "inspect_csv":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Inspecting \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = DelimitedParser.summary(text) else {
+                return ("'\(it.title)' doesn't parse as CSV/TSV (no rows found).", [])
+            }
+            return ("'\(it.title)':\n\(summary)", [])
 
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
