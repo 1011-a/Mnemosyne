@@ -159,6 +159,7 @@ struct ToolAgent: Sendable {
     • calculate(expr) / unit_convert(value,from,to) — do math and conversions EXACTLY; never compute in your head.
     • summarize_item / outline_item / keyword_extract — condense, outline, or fingerprint a large file.
     • extract_action_items(item) — pull TODOs/tasks/commitments out of a note; proactively offer to add_reminder for each.
+    • timeline(item) — list a file's dates in chronological order (a contract/project/history timeline).
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
     • sentiment(item) — gauge the emotional tone (−1…+1) of a file: reviews, feedback, journal entries.
     • find_by_date(start,end,field) — list files whose created/modified date falls in an explicit range.
@@ -214,6 +215,8 @@ struct ToolAgent: Sendable {
             tool("extract_links", "Pull all the web LINKS (http/https URLs) out of a file — for collecting references or following sources.",
                  ["item": item], required: ["item"]),
             tool("extract_dates", "Pull all DATES (ISO, slashed, or month-name) out of a file — for finding deadlines or events, e.g. to set reminders.",
+                 ["item": item], required: ["item"]),
+            tool("timeline", "List the dates in a file in CHRONOLOGICAL order (earliest first) — build a timeline of a contract, project log, or history. Unlike extract_dates (document order).",
                  ["item": item], required: ["item"]),
             tool("extract_emails", "Pull all EMAIL addresses out of a file — for collecting contacts.",
                  ["item": item], required: ["item"]),
@@ -1307,6 +1310,17 @@ struct ToolAgent: Sendable {
             let dates = DateExtractor.extract(text)
             guard !dates.isEmpty else { return ("No dates found in '\(it.title)'.", []) }
             return ("\(dates.count) date(s) in '\(it.title)': " + dates.joined(separator: "; "), [])
+
+        case "timeline":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Building a timeline for \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let ordered = DateExtractor.chronological(text)
+            guard !ordered.isEmpty else { return ("No dates to build a timeline from in '\(it.title)'.", []) }
+            return ("Timeline of '\(it.title)' (earliest → latest):\n" +
+                    ordered.map { "• \($0)" }.joined(separator: "\n"), [])
 
         case "extract_emails":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }

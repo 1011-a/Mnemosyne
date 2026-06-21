@@ -32,4 +32,39 @@ enum DateExtractor {
         }
         return out
     }
+
+    /// Parse one extracted date string (any of the recognized formats) into a `Date` for
+    /// sorting. Slashed dates are read as M/D/Y (US style). Returns nil if unparseable.
+    /// Pure → unit-testable.
+    static func parse(_ s: String) -> Date? {
+        let trimmed = s.trimmingCharacters(in: .whitespaces)
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let formats = ["yyyy-MM-dd", "M/d/yyyy", "M/d/yy",
+                       "MMM d, yyyy", "MMMM d, yyyy", "d MMM yyyy", "d MMMM yyyy"]
+        // Strip ordinal suffixes (1st, 2nd, 3rd, 4th) the formatters don't accept.
+        let cleaned = trimmed.replacingOccurrences(
+            of: #"(\d{1,2})(st|nd|rd|th)"#, with: "$1", options: .regularExpression)
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = cal
+        f.timeZone = cal.timeZone
+        for fmt in formats {
+            f.dateFormat = fmt
+            if let d = f.date(from: cleaned) { return d }
+        }
+        return nil
+    }
+
+    /// Extract the dates from `text` and order them CHRONOLOGICALLY (earliest first).
+    /// Unparseable but recognized strings are appended in document order at the end.
+    /// Backs the `timeline` tool. Pure → unit-testable.
+    static func chronological(_ text: String, max: Int = 50) -> [String] {
+        let found = extract(text, max: max)
+        let dated = found.map { (raw: $0, date: parse($0)) }
+        let parseable = dated.compactMap { p in p.date.map { (raw: p.raw, date: $0) } }
+            .sorted { $0.date < $1.date }.map(\.raw)
+        let unparseable = dated.filter { $0.date == nil }.map(\.raw)
+        return parseable + unparseable
+    }
 }
