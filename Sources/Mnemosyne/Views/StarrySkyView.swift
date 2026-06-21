@@ -1,202 +1,198 @@
 import SwiftUI
 
-/// A warm "Starry Night" live-activity scene: a deep night sky where stars LIGHT UP as
-/// files are indexed (the share of lit stars tracks ingest progress, and they twinkle),
-/// a crescent moon and the odd shooting star — and, on a grassy hill below, a family of
-/// four cuddled together under one blanket, gazing up at a bright "wish star". Purely a
-/// generated Canvas scene driven by `IngestProgress`. Cozy by design.
+/// A warm "Starry Night" live-activity scene. Stars LIGHT UP as files index (their count
+/// tracks ingest progress, and they twinkle); a warm horizon glow and crescent moon set a
+/// 小王子-ish storybook mood. On the hill, two figures sit in PROFILE gazing up at the
+/// sky, while two little girls RUN AND CHASE each other (animated) in front. A generated
+/// Canvas scene driven by `IngestProgress`.
 struct StarrySkyView: View {
     @Bindable var progress: IngestProgress
 
-    // Palette — cool sky, warm family/lantern (the warmth is the point).
-    private let skyTop = Color(red: 0.03, green: 0.04, blue: 0.13)
-    private let skyMid = Color(red: 0.08, green: 0.07, blue: 0.20)
-    private let skyLow = Color(red: 0.16, green: 0.12, blue: 0.26)
+    // Palette — warmer night so it reads as illustration, not mud.
+    private let skyTop = Color(red: 0.05, green: 0.05, blue: 0.17)
+    private let skyMid = Color(red: 0.15, green: 0.11, blue: 0.26)
+    private let skyLow = Color(red: 0.30, green: 0.17, blue: 0.27)
+    private let horizon = Color(red: 1.00, green: 0.62, blue: 0.36)
     private let starLit = Color(red: 1.00, green: 0.95, blue: 0.82)
-    private let starDim = Color(red: 0.55, green: 0.60, blue: 0.78)
-    private let moonC = Color(red: 0.99, green: 0.96, blue: 0.86)
-    private let hill = Color(red: 0.05, green: 0.06, blue: 0.12)
-    private let hill2 = Color(red: 0.09, green: 0.08, blue: 0.16)
+    private let starDim = Color(red: 0.62, green: 0.64, blue: 0.82)
+    private let moonC = Color(red: 1.00, green: 0.93, blue: 0.78)
+    private let hillBack = Color(red: 0.14, green: 0.10, blue: 0.20)
+    private let hillFront = Color(red: 0.09, green: 0.07, blue: 0.13)
     private let warm = Color(red: 1.00, green: 0.78, blue: 0.45)
-    private let warmDeep = Color(red: 0.95, green: 0.55, blue: 0.28)
-    private let figure = Color(red: 0.04, green: 0.03, blue: 0.07)
+    private let warmDeep = Color(red: 0.96, green: 0.52, blue: 0.28)
+    private let bodyC = Color(red: 0.11, green: 0.06, blue: 0.10)      // warm-dark figures
+    private let girlC = Color(red: 0.20, green: 0.09, blue: 0.12)      // girls a touch warmer
 
     private let totalStars = 150
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { tl in
+        TimelineView(.periodic(from: .now, by: 0.05)) { tl in   // 20fps for smooth running
             let t = tl.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 let W = size.width, H = size.height
                 let frac = progress.fraction
                 let litCount = max(progress.isRunning ? 8 : 4, Int(Double(totalStars) * frac))
 
-                // 1) Sky gradient.
+                // Sky + warm horizon glow.
                 ctx.fill(Path(CGRect(origin: .zero, size: size)),
                          with: .linearGradient(Gradient(colors: [skyTop, skyMid, skyLow]),
                                                startPoint: .zero, endPoint: CGPoint(x: 0, y: H)))
+                ctx.fill(Path(CGRect(x: 0, y: H * 0.55, width: W, height: H * 0.45)),
+                         with: .linearGradient(Gradient(colors: [.clear, horizon.opacity(0.18)]),
+                                               startPoint: CGPoint(x: 0, y: H * 0.55), endPoint: CGPoint(x: 0, y: H)))
 
-                // 2) Crescent moon (a bright disc with an offset shadow disc).
-                let moonR = min(H * 0.16, 30)
-                let moon = CGPoint(x: W - moonR * 1.8, y: moonR * 1.5)
+                // Crescent moon.
+                let moonR = min(H * 0.15, 28)
+                let moon = CGPoint(x: W - moonR * 1.9, y: moonR * 1.6)
                 ctx.fill(Path(ellipseIn: CGRect(x: moon.x - moonR, y: moon.y - moonR, width: moonR * 2, height: moonR * 2)),
-                         with: .radialGradient(Gradient(colors: [moonC, moonC.opacity(0.85)]),
-                                               center: moon, startRadius: 0, endRadius: moonR))
-                ctx.fill(Path(ellipseIn: CGRect(x: moon.x - moonR * 1.35, y: moon.y - moonR, width: moonR * 2, height: moonR * 2)),
-                         with: .color(skyMid))
+                         with: .radialGradient(Gradient(colors: [moonC, moonC.opacity(0.85)]), center: moon, startRadius: 0, endRadius: moonR))
+                ctx.fill(Path(ellipseIn: CGRect(x: moon.x - moonR * 1.35, y: moon.y - moonR, width: moonR * 2, height: moonR * 2)), with: .color(skyMid))
 
-                // 3) Stars — lit ones (by progress) glow + twinkle; the rest stay faint.
+                // Stars.
                 for i in 0..<totalStars {
-                    let sx = rnd(i &* 2) * Double(W)
-                    let sy = rnd(i &* 2 &+ 1) * Double(H) * 0.74
+                    let sx = rnd(i &* 2) * Double(W), sy = rnd(i &* 2 &+ 1) * Double(H) * 0.66
                     let lit = i < litCount
-                    let twinkle = 0.5 + 0.5 * abs(sin(t * 1.4 + Double(i) * 0.7))
-                    let r = lit ? (1.1 + 1.4 * twinkle) : 0.8
-                    let c = lit ? starLit.opacity(0.55 + 0.45 * twinkle) : starDim.opacity(0.35)
+                    let tw = 0.5 + 0.5 * abs(sin(t * 1.4 + Double(i) * 0.7))
+                    let r = lit ? (1.1 + 1.4 * tw) : 0.8
                     if lit {
                         ctx.fill(Path(ellipseIn: CGRect(x: sx - r * 2.2, y: sy - r * 2.2, width: r * 4.4, height: r * 4.4)),
-                                 with: .radialGradient(Gradient(colors: [starLit.opacity(0.22 * twinkle), .clear]),
-                                                       center: CGPoint(x: sx, y: sy), startRadius: 0, endRadius: r * 2.2))
+                                 with: .radialGradient(Gradient(colors: [starLit.opacity(0.22 * tw), .clear]), center: CGPoint(x: sx, y: sy), startRadius: 0, endRadius: r * 2.2))
                     }
-                    ctx.fill(Path(ellipseIn: CGRect(x: sx - r, y: sy - r, width: r * 2, height: r * 2)), with: .color(c))
+                    ctx.fill(Path(ellipseIn: CGRect(x: sx - r, y: sy - r, width: r * 2, height: r * 2)),
+                             with: .color(lit ? starLit.opacity(0.55 + 0.45 * tw) : starDim.opacity(0.35)))
                 }
 
-                // 4) An occasional shooting star (only while running).
+                // Shooting star while running.
                 if progress.isRunning {
                     let phase = (t.truncatingRemainder(dividingBy: 6.0)) / 6.0
                     if phase < 0.18 {
-                        let p = phase / 0.18
-                        let sx = W * (0.15 + 0.6 * p), sy = H * (0.12 + 0.18 * p)
-                        var tail = Path(); tail.move(to: CGPoint(x: sx, y: sy))
-                        tail.addLine(to: CGPoint(x: sx - 26, y: sy - 9))
+                        let p = phase / 0.18, sx = W * (0.15 + 0.6 * p), sy = H * (0.12 + 0.18 * p)
+                        var tail = Path(); tail.move(to: CGPoint(x: sx, y: sy)); tail.addLine(to: CGPoint(x: sx - 26, y: sy - 9))
                         ctx.stroke(tail, with: .linearGradient(Gradient(colors: [starLit.opacity(0.9), .clear]),
-                                                               startPoint: CGPoint(x: sx, y: sy),
-                                                               endPoint: CGPoint(x: sx - 26, y: sy - 9)), lineWidth: 1.6)
+                                                               startPoint: CGPoint(x: sx, y: sy), endPoint: CGPoint(x: sx - 26, y: sy - 9)), lineWidth: 1.6)
                     }
                 }
 
-                // 5) Rolling hills (two layers for depth).
-                hillPath(width: W, baseY: H - H * 0.16, amp: 10, phase: 0.6).map { ctx.fill($0, with: .color(hill2)) }
-                hillPath(width: W, baseY: H - H * 0.10, amp: 7, phase: 2.1).map { ctx.fill($0, with: .color(hill)) }
-
-                // 6) The "wish star" the family gazes at — extra bright, gently pulsing.
-                let cx = W * 0.5
-                let groundY = H - H * 0.085
-                let wish = CGPoint(x: cx + 6, y: H * 0.26)
+                // The "wish star" they gaze at.
+                let cx = W * 0.5, groundY = H - H * 0.07
+                let wish = CGPoint(x: cx - 70, y: H * 0.22)
                 let pulse = 0.7 + 0.3 * abs(sin(t * 1.1))
                 ctx.fill(Path(ellipseIn: CGRect(x: wish.x - 15, y: wish.y - 15, width: 30, height: 30)),
-                         with: .radialGradient(Gradient(colors: [starLit.opacity(0.4 * pulse), .clear]),
-                                               center: wish, startRadius: 0, endRadius: 15))
+                         with: .radialGradient(Gradient(colors: [starLit.opacity(0.4 * pulse), .clear]), center: wish, startRadius: 0, endRadius: 15))
                 ctx.fill(Path(ellipseIn: CGRect(x: wish.x - 2.4, y: wish.y - 2.4, width: 4.8, height: 4.8)), with: .color(starLit))
 
-                // 7) Warm lantern glow pooled gently around the family.
-                ctx.fill(Path(ellipseIn: CGRect(x: cx - 70, y: groundY - 40, width: 150, height: 78)),
-                         with: .radialGradient(Gradient(colors: [warm.opacity(0.26), warmDeep.opacity(0.08), .clear]),
-                                               center: CGPoint(x: cx + 30, y: groundY - 4), startRadius: 2, endRadius: 84))
+                // Hills.
+                hillPath(W, baseY: H - H * 0.15, amp: 9, phase: 0.6).map { ctx.fill($0, with: .color(hillBack)) }
+                hillPath(W, baseY: H - H * 0.085, amp: 6, phase: 2.1).map { ctx.fill($0, with: .color(hillFront)) }
 
-                drawFamily(&ctx, centerX: cx, groundY: groundY, t: t)
+                // Lantern glow.
+                let lan = CGPoint(x: cx + 4, y: groundY - 4)
+                ctx.fill(Path(ellipseIn: CGRect(x: cx - 64, y: groundY - 36, width: 150, height: 74)),
+                         with: .radialGradient(Gradient(colors: [warm.opacity(0.26), warmDeep.opacity(0.07), .clear]), center: lan, startRadius: 2, endRadius: 90))
 
-                // The lantern itself.
-                let lan = CGPoint(x: cx + 34, y: groundY - 6)
-                ctx.fill(Path(ellipseIn: CGRect(x: lan.x - 9, y: lan.y - 9, width: 18, height: 18)),
-                         with: .radialGradient(Gradient(colors: [warm.opacity(0.95), .clear]), center: lan, startRadius: 0, endRadius: 9))
-                ctx.fill(Path(ellipseIn: CGRect(x: lan.x - 1.6, y: lan.y - 2.6, width: 3.2, height: 5.2)), with: .color(warm))
+                // Two stargazers (profile, looking up) — left of the lantern.
+                gazer(&ctx, x: cx - 34, base: groundY, s: 1.18, bun: false, t: t)   // taller
+                gazer(&ctx, x: cx - 12, base: groundY, s: 1.00, bun: true,  t: t)   // bun
 
-                // 8) Soft HUD.
-                ctx.draw(Text("Knowledge indexed").font(.system(size: 11, weight: .semibold)).foregroundStyle(warm.opacity(0.8)),
-                         at: CGPoint(x: 14, y: 16), anchor: .topLeading)
-                ctx.draw(Text(grouped(progress.libraryItems)).font(.system(size: 28, weight: .heavy, design: .rounded)).foregroundStyle(starLit),
-                         at: CGPoint(x: 14, y: 28), anchor: .topLeading)
-                ctx.draw(Text("\(litCount) stars lit").font(.system(size: 10, weight: .medium)).foregroundStyle(starDim),
-                         at: CGPoint(x: 14, y: 62), anchor: .topLeading)
+                // The lantern itself, between the gazers and the playing girls.
+                ctx.fill(Path(ellipseIn: CGRect(x: lan.x - 8, y: lan.y - 8, width: 16, height: 16)),
+                         with: .radialGradient(Gradient(colors: [warm.opacity(0.95), .clear]), center: lan, startRadius: 0, endRadius: 8))
+                ctx.fill(Path(ellipseIn: CGRect(x: lan.x - 1.4, y: lan.y - 2.4, width: 2.8, height: 4.8)), with: .color(warm))
+
+                // Two little girls running & chasing each other — the dynamic bit.
+                let run = t * 1.25
+                let aX = cx + 40 + 34 * CGFloat(sin(run))            // girl A weaves
+                let aDir: CGFloat = cos(run) >= 0 ? 1 : -1
+                let bX = aX - 26 * aDir - 4                          // girl B chases, just behind
+                let bDir = aDir
+                runner(&ctx, x: bX, base: groundY, dir: bDir, phase: run * 6 + 1.0, s: 0.8, pig: true)  // chaser (behind)
+                runner(&ctx, x: aX, base: groundY, dir: aDir, phase: run * 6,        s: 0.86, pig: true) // leader (front)
+
+                // HUD.
+                ctx.draw(Text("Knowledge indexed").font(.system(size: 11, weight: .semibold)).foregroundStyle(warm.opacity(0.85)), at: CGPoint(x: 14, y: 16), anchor: .topLeading)
+                ctx.draw(Text(grouped(progress.libraryItems)).font(.system(size: 28, weight: .heavy, design: .rounded)).foregroundStyle(starLit), at: CGPoint(x: 14, y: 28), anchor: .topLeading)
+                ctx.draw(Text("\(litCount) stars lit").font(.system(size: 10, weight: .medium)).foregroundStyle(starDim), at: CGPoint(x: 14, y: 62), anchor: .topLeading)
             }
         }
         .frame(height: 320)
         .background(skyTop)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
-            .strokeBorder(DS.ColorToken.borderDefault))
+        .overlay(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous).strokeBorder(DS.ColorToken.borderDefault))
     }
 
-    // MARK: scene pieces
+    // MARK: figures
 
-    private func hillPath(width W: CGFloat, baseY: CGFloat, amp: CGFloat, phase: Double) -> Path? {
-        guard W > 1 else { return nil }
-        var p = Path()
-        p.move(to: CGPoint(x: 0, y: baseY))
-        var x: CGFloat = 0
-        while x <= W {
-            p.addLine(to: CGPoint(x: x, y: baseY - amp * CGFloat(sin(Double(x) / 90.0 + phase)) - amp))
-            x += 8
-        }
-        p.addLine(to: CGPoint(x: W, y: baseY + 200)); p.addLine(to: CGPoint(x: 0, y: baseY + 200)); p.closeSubpath()
-        return p
+    /// A person sitting in PROFILE (facing right), knees up, leaning back, head tilted up
+    /// with a little nose — so it clearly reads as "gazing at the sky". Warm rim-lit.
+    private func gazer(_ ctx: inout GraphicsContext, x: CGFloat, base baseY: CGFloat, s: CGFloat, bun: Bool, t: Double) {
+        let b = baseY + CGFloat(sin(t * 0.9)) * 0.5
+        var body = Path()
+        body.move(to: CGPoint(x: x - 9 * s, y: b))                                           // back hip on ground
+        body.addQuadCurve(to: CGPoint(x: x - 6 * s, y: b - 24 * s), control: CGPoint(x: x - 11 * s, y: b - 12 * s)) // up the leaning back
+        body.addQuadCurve(to: CGPoint(x: x - 1 * s, y: b - 29 * s), control: CGPoint(x: x - 7 * s, y: b - 29 * s))  // shoulder
+        body.addQuadCurve(to: CGPoint(x: x + 7 * s, y: b - 15 * s), control: CGPoint(x: x + 8 * s, y: b - 26 * s))  // chest/front
+        body.addQuadCurve(to: CGPoint(x: x + 14 * s, y: b - 9 * s), control: CGPoint(x: x + 13 * s, y: b - 14 * s)) // thigh→knee
+        body.addLine(to: CGPoint(x: x + 15 * s, y: b))                                         // shin→foot
+        body.closeSubpath()
+        ctx.fill(body, with: .color(bodyC))
+        ctx.fill(body, with: .radialGradient(Gradient(colors: [warm.opacity(0.16), .clear]),
+                                             center: CGPoint(x: x + 18 * s, y: b - 8 * s), startRadius: 0, endRadius: 30 * s))
+        // Head tilted up + a tiny nose pointing skyward.
+        let hc = CGPoint(x: x - 4 * s, y: b - 35 * s), hr = 6.4 * s
+        ctx.fill(Path(ellipseIn: CGRect(x: hc.x - hr, y: hc.y - hr, width: hr * 2, height: hr * 2)), with: .color(bodyC))
+        ctx.fill(Path(ellipseIn: CGRect(x: hc.x + hr * 0.6, y: hc.y - hr * 0.7, width: hr * 0.8, height: hr * 0.7)), with: .color(bodyC)) // nose
+        if bun { ctx.fill(Path(ellipseIn: CGRect(x: hc.x - hr * 0.9, y: hc.y - hr * 1.1, width: hr * 0.9, height: hr * 0.9)), with: .color(bodyC)) }
+        // warm rim on the head (sky/lantern side) + cool moon catchlight.
+        ctx.fill(Path(ellipseIn: CGRect(x: hc.x - hr, y: hc.y - hr, width: hr * 2, height: hr * 2)),
+                 with: .radialGradient(Gradient(colors: [warm.opacity(0.5), .clear]), center: CGPoint(x: hc.x + hr * 0.6, y: hc.y), startRadius: 0, endRadius: hr * 1.3))
+        ctx.fill(Path(ellipseIn: CGRect(x: hc.x - hr * 0.6, y: hc.y - hr * 0.7, width: hr * 0.45, height: hr * 0.45)), with: .color(starLit.opacity(0.5)))
     }
 
-    private enum Hair { case plain, bun, pigtails, ponytail }
-
-    /// The family, cuddled together under ONE blanket, stargazing — a soft rounded
-    /// "mound" with four heads (different sizes, leaning together) emerging from it, each
-    /// with a warm rim on the lantern side and a cool moonlit catchlight. Cozy by
-    /// construction: no harsh outlines, just soft warm-lit forms against the cool night.
-    private func drawFamily(_ ctx: inout GraphicsContext, centerX cx: CGFloat, groundY: CGFloat, t: Double) {
-        let breathe = CGFloat(sin(t * 0.9)) * 0.6
-        let blanketLow = Color(red: 0.10, green: 0.08, blue: 0.18)
-
-        // The blanket mound — a smooth rounded dome the family is wrapped in.
-        let mb = groundY + 10 + breathe, mt = groundY - 36 + breathe, mw: CGFloat = 60
-        var mound = Path()
-        mound.move(to: CGPoint(x: cx - mw, y: mb))
-        mound.addCurve(to: CGPoint(x: cx, y: mt),
-                       control1: CGPoint(x: cx - mw, y: mt + 6), control2: CGPoint(x: cx - mw * 0.46, y: mt))
-        mound.addCurve(to: CGPoint(x: cx + mw, y: mb),
-                       control1: CGPoint(x: cx + mw * 0.46, y: mt), control2: CGPoint(x: cx + mw, y: mt + 6))
-        mound.closeSubpath()
-        ctx.fill(mound, with: .linearGradient(Gradient(colors: [figure, blanketLow]),
-                                              startPoint: CGPoint(x: cx, y: mt), endPoint: CGPoint(x: cx, y: mb)))
-        ctx.fill(mound, with: .radialGradient(Gradient(colors: [warm.opacity(0.16), .clear]),
-                                              center: CGPoint(x: cx + 34, y: groundY - 6), startRadius: 2, endRadius: 62))
-        for dx: CGFloat in [-26, 4, 30] {
-            var fold = Path()
-            fold.move(to: CGPoint(x: cx + dx, y: mb - 2))
-            fold.addQuadCurve(to: CGPoint(x: cx + dx + 5, y: mt + 14), control: CGPoint(x: cx + dx + 10, y: mb - 18))
-            ctx.stroke(fold, with: .color(.black.opacity(0.18)), lineWidth: 1)
+    /// A little girl running (chibi: big head, flying pigtails, alternating legs). `dir`
+    /// is facing/run direction; `phase` drives the stride. Leaves a small dust puff behind.
+    private func runner(_ ctx: inout GraphicsContext, x: CGFloat, base baseY: CGFloat, dir: CGFloat, phase: Double, s: CGFloat, pig: Bool) {
+        let bob = CGFloat(abs(sin(phase))) * 2.0 * s
+        let y = baseY - bob
+        let stride = CGFloat(sin(phase))
+        // dust puff behind the back foot
+        for k in 0..<3 {
+            let dp = 0.4 + 0.2 * Double(k)
+            ctx.fill(Path(ellipseIn: CGRect(x: x - dir * (10 + CGFloat(k) * 5) * s - 2, y: baseY - 1, width: (4 - CGFloat(k)) * s + 2, height: (4 - CGFloat(k)) * s + 2)),
+                     with: .color(warm.opacity(0.12 * dp)))
         }
-
-        /// One head emerging from the blanket, leaning by `tilt`, with hair, a warm rim and
-        /// a cool catchlight.
-        func head(dx: CGFloat, r: CGFloat, tilt: CGFloat, hair: Hair, rise: CGFloat) {
-            let hx = cx + dx + tilt
-            let hy = mt - r * 0.55 - rise + breathe
-            let rect = CGRect(x: hx - r, y: hy - r, width: r * 2, height: r * 2)
-            // hair (behind), framing the head
-            ctx.fill(Path(ellipseIn: rect.insetBy(dx: -1, dy: -1)), with: .color(figure))
-            switch hair {
-            case .plain: break
-            case .bun:
-                ctx.fill(Path(ellipseIn: CGRect(x: hx - r * 0.42, y: hy - r - r * 0.6, width: r * 0.84, height: r * 0.84)), with: .color(figure))
-            case .pigtails:
-                for s in [-1.0, 1.0] as [CGFloat] {
-                    ctx.fill(Path(ellipseIn: CGRect(x: hx + s * (r + 1) - r * 0.4, y: hy - r * 0.1, width: r * 0.8, height: r * 1.1)), with: .color(figure))
-                }
-            case .ponytail:
-                ctx.fill(Path(ellipseIn: CGRect(x: hx - r - r * 0.5, y: hy - r * 0.2, width: r * 0.8, height: r * 1.5)), with: .color(figure))
+        // legs (alternating)
+        let hipY = y - 9 * s
+        for (i, ph) in [stride, -stride].enumerated() {
+            var leg = Path(); leg.move(to: CGPoint(x: x, y: hipY))
+            leg.addLine(to: CGPoint(x: x + dir * (3 + ph * 5) * s, y: baseY - (i == 0 ? abs(ph) * 3 * s : 0)))
+            ctx.stroke(leg, with: .color(girlC), style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round))
+        }
+        // body
+        ctx.fill(Path(ellipseIn: CGRect(x: x - 4 * s, y: y - 15 * s, width: 8 * s, height: 9 * s)), with: .color(girlC))
+        // arms out (swinging)
+        var arm = Path(); arm.move(to: CGPoint(x: x, y: y - 12 * s))
+        arm.addLine(to: CGPoint(x: x + dir * 6 * s, y: y - 13 * s - stride * 2 * s))
+        ctx.stroke(arm, with: .color(girlC), style: StrokeStyle(lineWidth: 2.0 * s, lineCap: .round))
+        // head (big) + flying pigtails
+        let hc = CGPoint(x: x + dir * 1.5 * s, y: y - 19 * s), hr = 6.5 * s
+        if pig {
+            for sy: CGFloat in [-1, 0.4] {
+                ctx.fill(Path(ellipseIn: CGRect(x: hc.x - dir * (hr + 2) * s, y: hc.y + sy * hr * 0.7 - stride * 2 * s,
+                                                width: 5 * s, height: 6 * s)), with: .color(girlC))
             }
-            ctx.fill(Path(ellipseIn: rect), with: .color(figure))
-            // warm rim on the lantern (right) side
-            ctx.fill(Path(ellipseIn: rect), with: .radialGradient(Gradient(colors: [warm.opacity(0.5), .clear]),
-                                                                  center: CGPoint(x: hx + r * 0.7, y: hy + r * 0.2),
-                                                                  startRadius: 0, endRadius: r * 1.3))
-            // cool moonlit catchlight, upper-left
-            ctx.fill(Path(ellipseIn: CGRect(x: hx - r * 0.55, y: hy - r * 0.7, width: r * 0.5, height: r * 0.5)),
-                     with: .color(starLit.opacity(0.5)))
         }
+        ctx.fill(Path(ellipseIn: CGRect(x: hc.x - hr, y: hc.y - hr, width: hr * 2, height: hr * 2)), with: .color(girlC))
+        // warm rim so they pop
+        ctx.fill(Path(ellipseIn: CGRect(x: hc.x - hr, y: hc.y - hr, width: hr * 2, height: hr * 2)),
+                 with: .radialGradient(Gradient(colors: [warm.opacity(0.45), .clear]), center: CGPoint(x: hc.x + dir * hr * 0.5, y: hc.y), startRadius: 0, endRadius: hr * 1.3))
+    }
 
-        // dad (tall, left) · mom (bun, right) · two girls leaning together in front.
-        head(dx: -22, r: 11,  tilt:  1.5, hair: .plain,    rise: 12)
-        head(dx:  22, r: 10,  tilt: -1.5, hair: .bun,      rise: 10)
-        head(dx:  -7, r: 7.5, tilt: -2.0, hair: .pigtails, rise: 3)
-        head(dx:   8, r: 6.8, tilt:  2.0, hair: .ponytail, rise: 1)
+    private func hillPath(_ W: CGFloat, baseY: CGFloat, amp: CGFloat, phase: Double) -> Path? {
+        guard W > 1 else { return nil }
+        var p = Path(); p.move(to: CGPoint(x: 0, y: baseY)); var x: CGFloat = 0
+        while x <= W { p.addLine(to: CGPoint(x: x, y: baseY - amp * CGFloat(sin(Double(x) / 90.0 + phase)) - amp)); x += 8 }
+        p.addLine(to: CGPoint(x: W, y: baseY + 220)); p.addLine(to: CGPoint(x: 0, y: baseY + 220)); p.closeSubpath()
+        return p
     }
 
     private func grouped(_ n: Int) -> String {
@@ -205,7 +201,6 @@ struct StarrySkyView: View {
         return String(out.reversed())
     }
 
-    /// Deterministic hash → 0..1, so star positions are stable across frames.
     private func rnd(_ n: Int) -> Double {
         var x = UInt64(bitPattern: Int64(n &* 2654435761)) & 0xFFFFFFFF
         x ^= x >> 13; x = x &* 1274126177; x ^= x >> 16
