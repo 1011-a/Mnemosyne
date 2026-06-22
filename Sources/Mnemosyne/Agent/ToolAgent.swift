@@ -225,6 +225,7 @@ struct ToolAgent: Sendable {
     • caesar(text, shift) — Caesar/ROT-N cipher a string (default ROT13).
     • nato(text) — spell text in the NATO phonetic alphabet (Alfa Bravo Charlie…).
     • vigenere(text, key, mode) — Vigenère keyword cipher encode/decode.
+    • char_frequency(text, top) — letter-frequency analysis (cipher-breaking aid).
     • morse(text, mode) — encode text to Morse code or decode it back (auto-detects).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
@@ -493,6 +494,10 @@ struct ToolAgent: Sendable {
                   "key": ["type": "string", "description": "The keyword (letters only are used)."],
                   "mode": ["type": "string", "description": "'encode' (default) or 'decode'."]],
                  required: ["text", "key"]),
+            tool("char_frequency", "Letter-frequency analysis of text — counts each A–Z letter (case-insensitive) with percentages, sorted most→least common. The classic first step in breaking a substitution/Caesar cipher. Set 'top' to cap rows.",
+                 ["text": ["type": "string", "description": "The text to analyze."],
+                  "top": ["type": "integer", "description": "Max letters to show (default 26)."]],
+                 required: ["text"]),
             tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
                  ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
                  required: ["data"]),
@@ -2651,6 +2656,13 @@ struct ToolAgent: Sendable {
                 return ("The key must contain at least one letter.", [])
             }
             return (out, [])
+
+        case "char_frequency":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let rows = CharFrequency.analyze(text)
+            guard !rows.isEmpty else { return ("No letters to analyze.", []) }
+            let top = Swift.min(Swift.max(Int(arg("top") ?? "") ?? 26, 1), 26)
+            return ("```\n\(CharFrequency.table(rows, limit: top))\n```", [])
 
         case "morse":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
