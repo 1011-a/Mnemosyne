@@ -116,6 +116,23 @@ struct DeepSeekClient: Sendable {
         return data
     }
 
+    /// DeepSeek-native beta **FIM (fill-in-the-middle)**: generate the text that belongs between
+    /// `prompt` (before the gap) and `suffix` (after it). Posts to `/beta/completions`. Returns
+    /// just the generated middle. See `DeepSeekFIM`.
+    func fillInMiddle(prompt: String, suffix: String,
+                      maxTokens: Int = 0, temperature: Double = 0.2) async throws -> String {
+        let body = DeepSeekFIM.body(prompt: prompt, suffix: suffix, model: config.deepSeekModel,
+                                    maxTokens: maxTokens, temperature: temperature)
+        var req = URLRequest(url: DeepSeekPrefix.betaBaseURL(deepSeekBaseURL).appendingPathComponent("completions"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        try authorize(&req)
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await session.data(for: req)
+        try Self.check(resp, data)
+        return DeepSeekFIM.extractText(from: data) ?? ""
+    }
+
     /// Stream an answer from a pre-serialized JSON body (must set "stream": true).
     /// Used by the agentic loop to stream its final answer after tool rounds.
     func rawStream(body: Data) -> AsyncThrowingStream<StreamDelta, Error> {
