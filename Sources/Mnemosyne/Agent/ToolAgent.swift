@@ -237,6 +237,7 @@ struct ToolAgent: Sendable {
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • count_text(text) — characters/words/lines/sentences of provided text.
     • count_occurrences(text, needle, case_sensitive, whole_word) — count how often a word/phrase appears.
+    • unicode_info(text) — code point (U+XXXX) + Unicode name of each character.
     • palindrome(text) — check if text reads the same forwards/backwards (ignoring case/punctuation).
     • anagram(a, b) — check whether two phrases are anagrams (same letters rearranged).
     • reverse(text, mode) — reverse text by characters or by word order.
@@ -543,6 +544,9 @@ struct ToolAgent: Sendable {
                  required: ["text"]),
             tool("count_text", "Count characters (with/without spaces), words, lines, and sentences of some text. Quick stats on a pasted passage.",
                  ["text": ["type": "string", "description": "The text to measure."]],
+                 required: ["text"]),
+            tool("unicode_info", "Inspect the Unicode code point (U+XXXX) and official name of each character in some text — useful for invisible characters, look-alikes, emoji, or accents.",
+                 ["text": ["type": "string", "description": "The text whose characters to inspect."]],
                  required: ["text"]),
             tool("count_occurrences", "Count how many times a word or phrase appears in some text. Case-insensitive by default; set case_sensitive=true or whole_word=true to refine. Overlapping matches aren't double-counted.",
                  ["text": ["type": "string", "description": "The text to search."],
@@ -2811,6 +2815,12 @@ struct ToolAgent: Sendable {
         case "count_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             return (TextCounts.report(text), [])
+
+        case "unicode_info":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let glyphs = UnicodeInfo.inspect(text)
+            guard !glyphs.isEmpty else { return ("Nothing to inspect.", []) }
+            return ("```\n\(UnicodeInfo.table(glyphs))\n```", [])
 
         case "count_occurrences":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
