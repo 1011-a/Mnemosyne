@@ -205,6 +205,7 @@ struct ToolAgent: Sendable {
     • json_to_table(item) — render a JSON array-of-objects (or object) as an aligned markdown table.
     • json_to_csv(item) — convert a JSON array-of-objects (or object) to CSV (RFC-4180 quoting).
     • json_keys(item) — list every unique key path in a JSON file (user.name, items[].id).
+    • json_pluck(item, key) — pull one field from every object in a JSON array (all emails, etc.).
     • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
     • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
     • quick_summary(item) — instant extractive summary (top sentences, no AI model, offline).
@@ -393,6 +394,9 @@ struct ToolAgent: Sendable {
                  ["item": item], required: ["item"]),
             tool("json_keys", "List every unique key PATH in a JSON file — 'user.name', 'items[].id' — a flat view of the structure. Pair with json_value to read a path.",
                  ["item": item], required: ["item"]),
+            tool("json_pluck", "From a JSON file that's an ARRAY of objects, pull one field from every object — e.g. all 'email' values. Returns the list of values.",
+                 ["item": item, "key": ["type": "string", "description": "The object key to pluck from each array element."]],
+                 required: ["item", "key"]),
             tool("text_stats", "Readability + length metrics for a file — word/sentence counts, estimated reading time, and a Flesch Reading Ease score with a plain-language band. Use to answer 'how long is this?' or 'how hard is it to read?'.",
                  ["item": item], required: ["item"]),
             tool("task_progress", "Measure a markdown CHECKLIST's completion in a file — counts done vs pending boxes ([x] vs [ ]) and a percent-complete. Unlike extract_action_items (only open TODOs), this reports the whole list including finished items.",
@@ -2166,6 +2170,19 @@ struct ToolAgent: Sendable {
                 return ("'\(it.title)' isn't a JSON object/array with keys.", [])
             }
             return ("\(paths.count) key path(s) in '\(it.title)':\n" + paths.map { "  \($0)" }.joined(separator: "\n"), [])
+
+        case "json_pluck":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            guard let key = arg("key"), !key.isEmpty else { return ("Missing 'key'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Plucking \(key) from \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let values = JSONPluck.pluck(text, key: key) else {
+                return ("'\(it.title)' isn't a JSON array of objects.", [])
+            }
+            guard !values.isEmpty else { return ("No object in '\(it.title)' has the key '\(key)'.", []) }
+            return ("\(values.count) value(s) for '\(key)':\n" + values.prefix(100).map { "  \($0)" }.joined(separator: "\n"), [])
 
         case "csv_column_stats":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
