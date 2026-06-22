@@ -234,6 +234,7 @@ struct ToolAgent: Sendable {
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • count_text(text) — characters/words/lines/sentences of provided text.
     • palindrome(text) — check if text reads the same forwards/backwards (ignoring case/punctuation).
+    • anagram(a, b) — check whether two phrases are anagrams (same letters rearranged).
     • reverse(text, mode) — reverse text by characters or by word order.
     • truncate(text, length, mode) — shorten text to N chars or words with an ellipsis.
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
@@ -518,6 +519,10 @@ struct ToolAgent: Sendable {
             tool("palindrome", "Check whether text reads the same forwards and backwards (ignoring case and punctuation). E.g. 'A man, a plan, a canal: Panama'.",
                  ["text": ["type": "string", "description": "The text to check."]],
                  required: ["text"]),
+            tool("anagram", "Check whether two phrases are anagrams — same letters rearranged (case, spaces, and punctuation ignored). E.g. 'Listen' / 'Silent'.",
+                 ["a": ["type": "string", "description": "First phrase."],
+                  "b": ["type": "string", "description": "Second phrase."]],
+                 required: ["a", "b"]),
             tool("reverse", "Reverse text. mode 'chars' (default) reverses the characters; mode 'words' reverses the word order.",
                  ["text": ["type": "string", "description": "The text to reverse."],
                   "mode": ["type": "string", "enum": ["chars", "words"], "description": "chars (default) or words."]],
@@ -2697,6 +2702,13 @@ struct ToolAgent: Sendable {
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             let yes = Palindrome.isPalindrome(text)
             return ("'\(text)' is \(yes ? "a palindrome" : "not a palindrome").", [])
+
+        case "anagram":
+            guard let a = arg("a"), !a.isEmpty, let b = arg("b"), !b.isEmpty else {
+                return ("Need two phrases ('a' and 'b') to compare.", [])
+            }
+            let yes = Anagram.isAnagram(a, b)
+            return ("'\(a)' and '\(b)' are \(yes ? "anagrams" : "NOT anagrams").", [])
 
         case "reverse":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
