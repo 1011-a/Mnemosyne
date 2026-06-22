@@ -103,6 +103,18 @@ struct DeepSeekClient: Sendable {
         return parsed.choices.first?.message.content ?? ""
     }
 
+    /// Force a JSON response using DeepSeek's native JSON Output mode (`response_format`) on the
+    /// standard endpoint — the official, most robust path. Decodes the message content and
+    /// extracts/validates the JSON. Returns nil if the model produced nothing parseable. See
+    /// `JSONMode`. Prefer this over `completeJSON` (the beta-prefix fallback).
+    func completeJSONMode(prior: [[String: Any]], temperature: Double = 0.2) async throws -> String? {
+        let body = JSONMode.body(prior: prior, model: config.deepSeekModel, temperature: temperature)
+        let data = try await rawChat(body: try JSONSerialization.data(withJSONObject: body))
+        struct R: Decodable { struct C: Decodable { struct M: Decodable { let content: String? }; let message: M }; let choices: [C] }
+        let content = (try? JSONDecoder().decode(R.self, from: data))?.choices.first?.message.content ?? ""
+        return JSONExtract.extractValid(from: content)
+    }
+
     /// Force a JSON response using the beta prefix feature: seed an assistant prefix of a ```json
     /// fence and stop at the closing fence, so the model can only emit JSON. Then extract +
     /// validate it. Returns the JSON string, or nil if the model produced nothing parseable.

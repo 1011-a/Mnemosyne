@@ -2853,8 +2853,11 @@ struct ToolAgent: Sendable {
             let fields = fieldsRaw.split(whereSeparator: { $0 == "," || $0 == "\n" })
                 .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             guard !fields.isEmpty else { return ("No field names found in 'fields'.", []) }
-            guard let json = try? await deepSeek.completeJSON(prior: FieldExtractor.messages(text: text, fields: fields)),
-                  let table = FieldExtractor.format(json: json, fields: fields) else {
+            let prior = FieldExtractor.messages(text: text, fields: fields)
+            // Prefer native JSON mode (response_format); fall back to the beta-prefix path.
+            var json = (try? await deepSeek.completeJSONMode(prior: prior)).flatMap { $0 }
+            if json == nil { json = (try? await deepSeek.completeJSON(prior: prior)).flatMap { $0 } }
+            guard let json, let table = FieldExtractor.format(json: json, fields: fields) else {
                 return ("Couldn't extract structured fields — the model returned no valid JSON.", [])
             }
             return ("```\n\(table)\n```", [])
