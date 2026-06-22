@@ -277,6 +277,7 @@ struct ToolAgent: Sendable {
     • outliers(data, k) — flag outliers in a number list via Tukey's IQR fences.
     • correlation(x, y) — Pearson r between two equal-length number lists.
     • moving_average(data, window) — rolling mean of a number series to reveal its trend.
+    • running_total(data) — cumulative sums of a number series (last = grand total).
     • histogram(data, bins) — text histogram of a number list's distribution.
     • tally(data) — count occurrences of each distinct value in a list (GROUP BY).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
@@ -669,6 +670,9 @@ struct ToolAgent: Sendable {
             tool("moving_average", "Smooth a number series with a simple moving average (rolling mean) over a window — reveals the trend. Set 'window' (default 3). Returns one value per window position. Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
                   "window": ["type": "integer", "description": "Window size (default 3)."]],
+                 required: ["data"]),
+            tool("running_total", "Cumulative (running) totals of a number series — each value is the sum so far; the last is the grand total. Great for finances/progress. Pass values separated by commas or spaces.",
+                 ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."]],
                  required: ["data"]),
             tool("tally", "Count how often each distinct value appears in a list (a GROUP BY) — statuses, tags, names. Pass values one per line (or comma-separated). Returns a frequency table; pair with bar_chart to visualize it.",
                  ["data": ["type": "string", "description": "Values one per line or comma-separated, e.g. 'open\\nopen\\nclosed'."]],
@@ -2976,6 +2980,14 @@ struct ToolAgent: Sendable {
             }
             let list = ma.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
             return ("\(w)-point moving average (\(ma.count) values): \(list)", [])
+
+        case "running_total":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
+            let nums = NumberStats.parse(data)
+            guard !nums.isEmpty else { return ("Couldn't parse any numbers from the data.", []) }
+            let totals = RunningTotal.cumulative(nums)
+            let list = totals.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
+            return ("Running totals (\(totals.count) values): \(list) — grand total \(Quartiles.fmt((totals.last! * 100).rounded() / 100)).", [])
 
         case "tally":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of values).", []) }
