@@ -246,6 +246,7 @@ struct ToolAgent: Sendable {
     • line_diff(a, b) — line-level LCS diff of two text blocks (unified +/- view).
     • extract_fields(text, fields) — pull named fields from text into a table (reliable force-JSON).
     • fill_in(prefix, suffix) — generate the missing middle between two anchors (DeepSeek FIM).
+    • deep_reason(question) — answer a hard analytical question with the reasoner model (R1), step-by-step.
     • text_similarity(a, b) — Jaccard word-overlap similarity of two texts (0–100%).
     • edit_distance(a, b) — Levenshtein edit distance + similarity % (typos, fuzzy matching).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
@@ -583,6 +584,9 @@ struct ToolAgent: Sendable {
                  ["prefix": ["type": "string", "description": "The text/code BEFORE the gap."],
                   "suffix": ["type": "string", "description": "The text/code AFTER the gap (optional)."]],
                  required: ["prefix"]),
+            tool("deep_reason", "Answer a HARD analytical question with DeepSeek's reasoner model (R1) — it thinks step-by-step before answering. Use for proofs, multi-step logic, trade-off analysis, debugging, or anything needing careful reasoning (not quick lookups). Returns the answer plus its reasoning.",
+                 ["question": ["type": "string", "description": "The analytical question to reason through."]],
+                 required: ["question"]),
             tool("text_similarity", "Measure how similar two texts are — a Jaccard word-overlap ratio (0–100%). Use to gauge how alike two notes/passages are.",
                  ["a": ["type": "string", "description": "The first text."],
                   "b": ["type": "string", "description": "The second text."]],
@@ -2850,6 +2854,18 @@ struct ToolAgent: Sendable {
             }
             let middle = FillIn.trimSuffixEcho(raw, suffix: suffix)
             return ("```\n\(middle)\n```", [])
+
+        case "deep_reason":
+            guard let question = arg("question"), !question.isEmpty else { return ("Missing 'question'.", []) }
+            onStatus(ReasonerRouter.rationale(question))
+            guard let result = try? await deepSeek.reasonedAnswer(question), !result.answer.isEmpty else {
+                return ("The reasoner returned no answer (it may be unavailable for this account).", [])
+            }
+            var out = result.answer
+            if let reasoning = result.reasoning, !reasoning.isEmpty {
+                out += "\n\n<details>\n<summary>Reasoning</summary>\n\n\(reasoning)\n\n</details>"
+            }
+            return (out, [])
 
         case "extract_fields":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
