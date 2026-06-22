@@ -276,6 +276,7 @@ struct ToolAgent: Sendable {
     • quartiles(data) — Q1/median/Q3/IQR of a list of numbers.
     • outliers(data, k) — flag outliers in a number list via Tukey's IQR fences.
     • correlation(x, y) — Pearson r between two equal-length number lists.
+    • moving_average(data, window) — rolling mean of a number series to reveal its trend.
     • histogram(data, bins) — text histogram of a number list's distribution.
     • tally(data) — count occurrences of each distinct value in a list (GROUP BY).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
@@ -665,6 +666,10 @@ struct ToolAgent: Sendable {
                  ["x": ["type": "string", "description": "First series, numbers separated by commas/spaces/newlines."],
                   "y": ["type": "string", "description": "Second series, same length as x."]],
                  required: ["x", "y"]),
+            tool("moving_average", "Smooth a number series with a simple moving average (rolling mean) over a window — reveals the trend. Set 'window' (default 3). Returns one value per window position. Pass values separated by commas or spaces.",
+                 ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
+                  "window": ["type": "integer", "description": "Window size (default 3)."]],
+                 required: ["data"]),
             tool("tally", "Count how often each distinct value appears in a list (a GROUP BY) — statuses, tags, names. Pass values one per line (or comma-separated). Returns a frequency table; pair with bar_chart to visualize it.",
                  ["data": ["type": "string", "description": "Values one per line or comma-separated, e.g. 'open\\nopen\\nclosed'."]],
                  required: ["data"]),
@@ -2960,6 +2965,17 @@ struct ToolAgent: Sendable {
                 return ("Need at least 2 paired numbers, and neither list can be constant (flat).", [])
             }
             return ("r = \(Quartiles.fmt((r * 1000).rounded() / 1000)) (\(Correlation.describe(r)), n=\(x.count))", [])
+
+        case "moving_average":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
+            let nums = NumberStats.parse(data)
+            guard !nums.isEmpty else { return ("Couldn't parse any numbers from the data.", []) }
+            let w = Swift.max(Int(arg("window") ?? "") ?? 3, 1)
+            guard let ma = MovingAverage.simple(nums, window: w) else {
+                return ("Window (\(w)) must be between 1 and the number of values (\(nums.count)).", [])
+            }
+            let list = ma.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
+            return ("\(w)-point moving average (\(ma.count) values): \(list)", [])
 
         case "tally":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of values).", []) }
