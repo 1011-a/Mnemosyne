@@ -225,6 +225,7 @@ struct ToolAgent: Sendable {
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
+    • file_size(value) — bytes ↔ human size (1500000 ↔ '1.5 MB'; '2GB' → bytes).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
@@ -442,6 +443,9 @@ struct ToolAgent: Sendable {
                  required: ["value"]),
             tool("duration", "Convert between seconds and human-readable durations. A plain number is read as seconds → '1h 1m 1s'; a duration like '1h 30m' or '1:30:00' → seconds.",
                  ["value": ["type": "string", "description": "Seconds (e.g. '3661') or a duration ('1h 30m', '1:30:00')."]],
+                 required: ["value"]),
+            tool("file_size", "Convert between a byte count and a human-readable size (decimal, like Finder). A plain number of bytes → '1.5 MB'; a size like '1.5 MB' or '2GB' → bytes.",
+                 ["value": ["type": "string", "description": "Bytes (e.g. '1500000') or a size ('1.5 MB', '2GB')."]],
                  required: ["value"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
@@ -2265,6 +2269,16 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse '\(value)' — use seconds, '1h 30m', or '1:30:00'.", [])
             }
             return ("\(value) = \(secs) seconds (\(HumanDuration.humanize(secs)))", [])
+
+        case "file_size":
+            guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
+            if let bytes = Int(value.trimmingCharacters(in: .whitespaces)) {
+                return ("\(bytes) bytes = \(ByteSize.humanize(bytes))", [])
+            }
+            guard let bytes = ByteSize.parse(value) else {
+                return ("Couldn't parse '\(value)' — use bytes or a size like '1.5 MB'.", [])
+            }
+            return ("\(value) = \(bytes) bytes", [])
 
         case "percentage":
             guard let mode = arg("mode"),
