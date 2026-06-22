@@ -1,6 +1,6 @@
 # Mnemosyne
 
-Mnemosyne is a macOS personal-knowledge app. It ingests local files into a searchable knowledge base, keeps embeddings on-device with Apple's Natural Language framework, and uses a configurable agent brain to answer questions with citations.
+Mnemosyne is a macOS personal-knowledge app. It ingests local files into a searchable knowledge base, keeps embeddings on-device with Apple's Natural Language framework, and uses a configurable agent brain to answer questions with citations. Its agentic tool-calling loop is powered by [Fathom](https://github.com/paean-ai/Fathom), an open-source Swift agent SDK.
 
 ## What It Does
 
@@ -98,6 +98,10 @@ cp codex-pet/memo/pet.json codex-pet/memo/spritesheet.webp "${CODEX_HOME:-$HOME/
 By default, file parsing, embeddings, and Gemma/Ollama multimodal extraction run locally. DeepSeek answers send the question, selected conversation context, and retrieved snippets to the configured DeepSeek-compatible endpoint. Claude CLI and Codex CLI ingest modes may send selected files or rendered images/PDFs through those tools according to the user's local CLI configuration.
 
 See [PRIVACY.md](PRIVACY.md) for the full data-flow notes.
+
+## Agent SDK (Fathom)
+
+Mnemosyne's Ask tab runs on **[Fathom](https://github.com/paean-ai/Fathom)** — an open-source, dependency-free Swift agent SDK (a mockable `LLMClient` + an `Orchestrator` with tool-calling, planning, a critic, guardrails, streaming, MCP, and skills). It's consumed as a Swift Package dependency (`https://github.com/paean-ai/Fathom.git`). The app layers DeepSeek-native features (reasoning traces, prompt-cache reporting, prefix/FIM completion, JSON mode) on top.
 
 ## Project Layout
 
