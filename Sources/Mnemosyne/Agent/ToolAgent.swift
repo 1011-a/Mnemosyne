@@ -218,6 +218,7 @@ struct ToolAgent: Sendable {
     • headline_case(text) — AP/Chicago title case (minor words stay lowercase).
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
+    • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
     • sort_lines(text, …) — sort lines (alpha/numeric, reverse, unique).
@@ -419,6 +420,11 @@ struct ToolAgent: Sendable {
                   "replace": ["type": "string", "description": "The replacement (may be empty to delete)."],
                   "case_insensitive": ["type": "boolean", "description": "Ignore case when matching (default false)."]],
                  required: ["text", "find", "replace"]),
+            tool("extract_between", "Extract every span of text between a start and end marker — e.g. between '<b>' and '</b>', or '[' and ']'. Use to pull fields out of templated or markup text.",
+                 ["text": ["type": "string", "description": "The text to scan."],
+                  "start": ["type": "string", "description": "The opening marker."],
+                  "end": ["type": "string", "description": "The closing marker."]],
+                 required: ["text", "start", "end"]),
             tool("extract_json", "Pull valid JSON object(s) or array(s) embedded in a larger text — JSON buried in logs, model output, or prose. Returns each JSON block found.",
                  ["text": ["type": "string", "description": "The text that may contain JSON."]],
                  required: ["text"]),
@@ -2263,6 +2269,16 @@ struct ToolAgent: Sendable {
             let (out, count) = TextReplace.replace(text, find: find, with: replacement, caseInsensitive: ci)
             guard count > 0 else { return ("No occurrences of '\(find)' found — text unchanged.", []) }
             return ("\(out)\n\n(\(count) replacement\(count == 1 ? "" : "s"))", [])
+
+        case "extract_between":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let start = arg("start"), !start.isEmpty, let end = arg("end"), !end.isEmpty else {
+                return ("Need non-empty 'start' and 'end' markers.", [])
+            }
+            guard let summary = TextBetween.summary(text, start: start, end: end) else {
+                return ("No text found between '\(start)' and '\(end)'.", [])
+            }
+            return (summary, [])
 
         case "extract_json":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
