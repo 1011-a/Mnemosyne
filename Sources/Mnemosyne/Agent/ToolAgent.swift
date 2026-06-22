@@ -224,6 +224,7 @@ struct ToolAgent: Sendable {
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
+    • wrap_text(text, width) — word-wrap text to a column width (preserves paragraphs).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
     • json_merge(a, b, deep) — merge two JSON objects (second wins; deep by default).
@@ -448,6 +449,10 @@ struct ToolAgent: Sendable {
                   "mode": ["type": "string", "enum": ["indent", "dedent"], "description": "indent or dedent."],
                   "spaces": ["type": "integer", "description": "Spaces to add for 'indent' (default 2)."]],
                  required: ["text", "mode"]),
+            tool("wrap_text", "Word-wrap text to a column width (default 80), preserving blank-line paragraph breaks. Use to reflow prose or comments.",
+                 ["text": ["type": "string", "description": "The text to wrap."],
+                  "width": ["type": "integer", "description": "Column width (default 80)."]],
+                 required: ["text"]),
             tool("extract_json", "Pull valid JSON object(s) or array(s) embedded in a larger text — JSON buried in logs, model output, or prose. Returns each JSON block found.",
                  ["text": ["type": "string", "description": "The text that may contain JSON."]],
                  required: ["text"]),
@@ -2379,6 +2384,11 @@ struct ToolAgent: Sendable {
             default:
                 return ("Set mode to 'indent' or 'dedent'.", [])
             }
+
+        case "wrap_text":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let width = Int(arg("width") ?? "") ?? 80
+            return (TextWrap.wrap(text, width: max(1, width)), [])
 
         case "extract_json":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
