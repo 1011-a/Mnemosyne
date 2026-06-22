@@ -244,6 +244,7 @@ struct ToolAgent: Sendable {
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • word_diff(a, b) — word-level diff of two texts (added vs removed words).
     • line_diff(a, b) — line-level LCS diff of two text blocks (unified +/- view).
+    • extract_fields(text, fields) — pull named fields from text into a table (reliable force-JSON).
     • text_similarity(a, b) — Jaccard word-overlap similarity of two texts (0–100%).
     • edit_distance(a, b) — Levenshtein edit distance + similarity % (typos, fuzzy matching).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
@@ -570,6 +571,10 @@ struct ToolAgent: Sendable {
                  ["a": ["type": "string", "description": "The original text (one item per line)."],
                   "b": ["type": "string", "description": "The new text to compare against A."]],
                  required: ["a", "b"]),
+            tool("extract_fields", "Pull named fields out of free text into a structured table — e.g. extract 'name, date, amount, vendor' from a receipt or email. Uses DeepSeek's force-JSON mode for reliable structure. Missing fields show as —.",
+                 ["text": ["type": "string", "description": "The source text to extract from."],
+                  "fields": ["type": "string", "description": "Field names to extract, comma-separated (e.g. 'name, date, total')."]],
+                 required: ["text", "fields"]),
             tool("text_similarity", "Measure how similar two texts are — a Jaccard word-overlap ratio (0–100%). Use to gauge how alike two notes/passages are.",
                  ["a": ["type": "string", "description": "The first text."],
                   "b": ["type": "string", "description": "The second text."]],
@@ -2817,6 +2822,18 @@ struct ToolAgent: Sendable {
             let d = LineDiff.diff(a, b)
             if d.added == 0 && d.removed == 0 { return ("No differences — the two texts are identical.", []) }
             return ("\(d.added) added, \(d.removed) removed:\n```\n\(d.lines.joined(separator: "\n"))\n```", [])
+
+        case "extract_fields":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let fieldsRaw = arg("fields"), !fieldsRaw.isEmpty else { return ("Missing 'fields' (comma-separated names).", []) }
+            let fields = fieldsRaw.split(whereSeparator: { $0 == "," || $0 == "\n" })
+                .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            guard !fields.isEmpty else { return ("No field names found in 'fields'.", []) }
+            guard let json = try? await deepSeek.completeJSON(prior: FieldExtractor.messages(text: text, fields: fields)),
+                  let table = FieldExtractor.format(json: json, fields: fields) else {
+                return ("Couldn't extract structured fields — the model returned no valid JSON.", [])
+            }
+            return ("```\n\(table)\n```", [])
 
         case "text_similarity":
             guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
