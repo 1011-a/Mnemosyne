@@ -229,6 +229,7 @@ struct ToolAgent: Sendable {
     • url_encode(text, mode) — percent-encode/decode text for URLs (hello world ↔ hello%20world).
     • caesar(text, shift) — Caesar/ROT-N cipher a string (default ROT13).
     • nato(text) — spell text in the NATO phonetic alphabet (Alfa Bravo Charlie…).
+    • morse(text, mode) — encode text to Morse code or decode it back (auto-detects).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
@@ -484,6 +485,10 @@ struct ToolAgent: Sendable {
                  required: ["text"]),
             tool("nato", "Spell text using the NATO phonetic alphabet (Alfa, Bravo, Charlie…) — read out a code, name, or confirmation number unambiguously over the phone. Digits and punctuation handled too.",
                  ["text": ["type": "string", "description": "The text to spell out phonetically."]],
+                 required: ["text"]),
+            tool("morse", "Encode text to International Morse code or decode Morse back to text. Letters separated by spaces, words by ' / '. Auto-detects direction; set 'mode' to 'encode'/'decode' to force it.",
+                 ["text": ["type": "string", "description": "Plain text to encode, or dot/dash Morse to decode."],
+                  "mode": ["type": "string", "description": "'encode', 'decode', or omit to auto-detect."]],
                  required: ["text"]),
             tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
                  ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
@@ -2616,6 +2621,19 @@ struct ToolAgent: Sendable {
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             guard let spelled = NatoPhonetic.spell(text) else { return ("Nothing to spell.", []) }
             return (spelled, [])
+
+        case "morse":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let mode = (arg("mode") ?? "").lowercased()
+            // Auto-detect: text made only of . - / and whitespace is Morse → decode.
+            let looksLikeMorse = text.allSatisfy { ".-/ \n\t".contains($0) }
+            let decode = mode == "decode" || (mode != "encode" && looksLikeMorse)
+            if decode {
+                guard let out = MorseCode.decode(text) else { return ("Couldn't decode any Morse.", []) }
+                return (out, [])
+            }
+            guard let out = MorseCode.encode(text) else { return ("Nothing encodable to Morse.", []) }
+            return ("```\n\(out)\n```", [])
 
         case "make_checklist":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of items).", []) }
