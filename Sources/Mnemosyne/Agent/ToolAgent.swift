@@ -217,6 +217,7 @@ struct ToolAgent: Sendable {
     • slugify(text) — make a URL/filename-safe slug from a string (accents folded, punctuation collapsed).
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
+    • html_entities(text, mode) — escape/unescape HTML entities (< ↔ &lt;).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
@@ -417,6 +418,10 @@ struct ToolAgent: Sendable {
             tool("base64", "Base64-encode or -decode text. Set mode to 'encode' (default) or 'decode'. Use for data URIs, tokens, or decoding an encoded snippet.",
                  ["text": ["type": "string", "description": "The text to encode, or the base64 to decode."],
                   "mode": ["type": "string", "enum": ["encode", "decode"], "description": "encode (default) or decode."]],
+                 required: ["text"]),
+            tool("html_entities", "Escape or unescape HTML entities (< ↔ &lt;, & ↔ &amp;, etc.). Set mode to 'escape' (default) to make text HTML-safe, or 'unescape' to decode.",
+                 ["text": ["type": "string", "description": "The text to escape or unescape."],
+                  "mode": ["type": "string", "enum": ["escape", "unescape"], "description": "escape (default) or unescape."]],
                  required: ["text"]),
             tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
                  ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
@@ -2338,6 +2343,11 @@ struct ToolAgent: Sendable {
                 return (decoded, [])
             }
             return (Base64Util.encode(text), [])
+
+        case "html_entities":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let unescape = (arg("mode") ?? "escape").lowercased() == "unescape"
+            return (unescape ? HTMLEntities.unescape(text) : HTMLEntities.escape(text), [])
 
         case "make_checklist":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of items).", []) }
