@@ -10,8 +10,9 @@ enum ContextManager {
     /// don't compact until the conversation is big. Leaves headroom for tools+answer.
     static let defaultBudgetTokens = 96_000
 
-    /// Rough token estimate (~4 chars/token). A safe upper bound for budgeting.
-    static func estimateTokens(_ text: String) -> Int { Swift.max(1, text.count / 4) }
+    /// Script-aware token estimate (~4 Latin chars/token, but ~1.5 tokens per CJK character) — a
+    /// safe upper bound for budgeting that doesn't under-count Chinese/Japanese/Korean content.
+    static func estimateTokens(_ text: String) -> Int { Swift.max(1, TokenEstimate.estimate(text)) }
     static func messageTokens(_ m: ChatMessage) -> Int { estimateTokens(m.content) }
     static func totalTokens(_ messages: [ChatMessage]) -> Int {
         messages.reduce(0) { $0 + messageTokens($1) }
