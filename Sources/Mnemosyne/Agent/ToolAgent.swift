@@ -273,6 +273,7 @@ struct ToolAgent: Sendable {
     • validate_email(email) — check whether a string is a well-formed email address.
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • compound_interest(principal, rate, years, times_per_year) — future value with compound interest.
+    • loan_payment(principal, rate, years) — monthly loan/mortgage payment + total interest.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
     • file_size(value) — bytes ↔ human size (1500000 ↔ '1.5 MB'; '2GB' → bytes).
@@ -691,6 +692,11 @@ struct ToolAgent: Sendable {
                   "rate": ["type": "number", "description": "Annual interest rate, as a percent (e.g. 5 for 5%)."],
                   "years": ["type": "number", "description": "Number of years."],
                   "times_per_year": ["type": "integer", "description": "Compounding periods per year (default 1; 12=monthly)."]],
+                 required: ["principal", "rate", "years"]),
+            tool("loan_payment", "Monthly payment on a fixed-rate loan (amortization) — e.g. a mortgage or car loan. Set 'principal', 'rate' (annual %), and 'years'. Reports the monthly payment and total interest.",
+                 ["principal": ["type": "number", "description": "Loan amount."],
+                  "rate": ["type": "number", "description": "Annual interest rate, as a percent (e.g. 6 for 6%)."],
+                  "years": ["type": "number", "description": "Loan term in years."]],
                  required: ["principal", "rate", "years"]),
             tool("roman_numeral", "Convert between Arabic and Roman numerals (1–3999), direction auto-detected. E.g. '1994' → MCMXCIV, or 'IV' → 4.",
                  ["value": ["type": "string", "description": "A number (1–3999) or a Roman numeral."]],
@@ -3061,6 +3067,18 @@ struct ToolAgent: Sendable {
             default:
                 return ("Unknown mode. Use 'of', 'what_percent', or 'change'.", [])
             }
+
+        case "loan_payment":
+            guard let principal = Double(arg("principal") ?? ""), let rate = Double(arg("rate") ?? ""),
+                  let years = Double(arg("years") ?? "") else {
+                return ("Need numeric 'principal', 'rate', and 'years'.", [])
+            }
+            guard let m = LoanPayment.monthlyPayment(principal: principal, annualRatePct: rate, years: years),
+                  let interest = LoanPayment.totalInterest(principal: principal, annualRatePct: rate, years: years) else {
+                return ("Principal must be ≥ 0 and years > 0.", [])
+            }
+            let f: (Double) -> String = { String(format: "%.2f", $0) }
+            return ("\(f(principal)) at \(Percentage.fmt(rate))%/yr over \(Percentage.fmt(years)) years → \(f(m))/month. Total interest \(f(interest)), total paid \(f(principal + interest)).", [])
 
         case "compound_interest":
             guard let principal = Double(arg("principal") ?? ""), let rate = Double(arg("rate") ?? ""),
