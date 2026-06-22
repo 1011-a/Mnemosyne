@@ -232,6 +232,7 @@ struct ToolAgent: Sendable {
     • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
     • number_to_words(value) — spell an integer in English words (1234 → 'one thousand…').
     • ordinal(value) — format a number as an ordinal (23 → 23rd).
+    • color(value) — convert hex ↔ RGB (#FF5733 ↔ rgb(255, 87, 51)).
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
@@ -477,6 +478,9 @@ struct ToolAgent: Sendable {
                  required: ["value"]),
             tool("ordinal", "Format a number as an ordinal — 1 → 1st, 23 → 23rd, 111 → 111th (handles the 11/12/13 exceptions).",
                  ["value": ["type": "string", "description": "The integer to make ordinal."]],
+                 required: ["value"]),
+            tool("color", "Convert a color between hex and RGB — '#FF5733' → rgb(255, 87, 51), or '255,87,51' → #FF5733. Supports shorthand like #fff.",
+                 ["value": ["type": "string", "description": "A hex color (#RRGGBB or #RGB) or 'r,g,b'."]],
                  required: ["value"]),
             tool("percentage", "Everyday percentage math. mode 'of' → a% of b; 'what_percent' → a is what % of b; 'change' → percent change from a to b. E.g. mode=of, a=10, b=200.",
                  ["mode": ["type": "string", "enum": ["of", "what_percent", "change"], "description": "Which calculation."],
@@ -2411,6 +2415,13 @@ struct ToolAgent: Sendable {
                 return ("Need an integer 'value'.", [])
             }
             return (Ordinal.format(n), [])
+
+        case "color":
+            guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
+            guard let out = ColorConvert.describe(value) else {
+                return ("Couldn't parse '\(value)' as a color — use #RRGGBB, #RGB, or 'r,g,b' (0–255).", [])
+            }
+            return (out, [])
 
         case "percentage":
             guard let mode = arg("mode"),
