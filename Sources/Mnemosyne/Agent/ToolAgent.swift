@@ -271,6 +271,7 @@ struct ToolAgent: Sendable {
     • password_strength(password) — entropy-bits + strength label, on-device.
     • validate_email(email) — check whether a string is a well-formed email address.
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
+    • compound_interest(principal, rate, years, times_per_year) — future value with compound interest.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
     • file_size(value) — bytes ↔ human size (1500000 ↔ '1.5 MB'; '2GB' → bytes).
@@ -681,6 +682,12 @@ struct ToolAgent: Sendable {
                   "a": ["type": "number", "description": "First number."],
                   "b": ["type": "number", "description": "Second number."]],
                  required: ["mode", "a", "b"]),
+            tool("compound_interest", "Compound-interest future value — what a principal grows to at a given annual rate over some years. Set 'principal', 'rate' (annual %), 'years', and optional 'times_per_year' (compounding frequency, default 1).",
+                 ["principal": ["type": "number", "description": "Starting amount."],
+                  "rate": ["type": "number", "description": "Annual interest rate, as a percent (e.g. 5 for 5%)."],
+                  "years": ["type": "number", "description": "Number of years."],
+                  "times_per_year": ["type": "integer", "description": "Compounding periods per year (default 1; 12=monthly)."]],
+                 required: ["principal", "rate", "years"]),
             tool("roman_numeral", "Convert between Arabic and Roman numerals (1–3999), direction auto-detected. E.g. '1994' → MCMXCIV, or 'IV' → 4.",
                  ["value": ["type": "string", "description": "A number (1–3999) or a Roman numeral."]],
                  required: ["value"]),
@@ -3038,6 +3045,19 @@ struct ToolAgent: Sendable {
             default:
                 return ("Unknown mode. Use 'of', 'what_percent', or 'change'.", [])
             }
+
+        case "compound_interest":
+            guard let principal = Double(arg("principal") ?? ""), let rate = Double(arg("rate") ?? ""),
+                  let years = Double(arg("years") ?? "") else {
+                return ("Need numeric 'principal', 'rate', and 'years'.", [])
+            }
+            let m = Swift.max(Int(arg("times_per_year") ?? "") ?? 1, 1)
+            guard let fv = CompoundInterest.futureValue(principal: principal, annualRatePct: rate, years: years, perYear: m) else {
+                return ("Principal and years must be ≥ 0.", [])
+            }
+            let f: (Double) -> String = { String(format: "%.2f", $0) }
+            let freq = m == 1 ? "annually" : (m == 12 ? "monthly" : (m == 4 ? "quarterly" : "\(m)×/year"))
+            return ("\(f(principal)) at \(Percentage.fmt(rate))%/yr for \(Percentage.fmt(years)) years (\(freq)) → \(f(fv)) (interest \(f(fv - principal)))", [])
 
         case "format_json":
             guard let json = arg("json"), !json.isEmpty else { return ("Missing 'json'.", []) }
