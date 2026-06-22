@@ -278,6 +278,7 @@ struct ToolAgent: Sendable {
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
     • sparkline(data) — compact one-line trend (▁▂▃▄▅▆▇█) from a number series.
     • quartiles(data) — Q1/median/Q3/IQR of a list of numbers.
+    • percentile(data, p) — the Nth percentile of a number list (e.g. p95 latency).
     • outliers(data, k) — flag outliers in a number list via Tukey's IQR fences.
     • correlation(x, y) — Pearson r between two equal-length number lists.
     • moving_average(data, window) — rolling mean of a number series to reveal its trend.
@@ -695,6 +696,10 @@ struct ToolAgent: Sendable {
                  required: ["data"]),
             tool("quartiles", "Compute the quartiles of a list of numbers — Q1, median, Q3, and the interquartile range (IQR). Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."]],
+                 required: ["data"]),
+            tool("percentile", "Compute the Nth percentile of a list of numbers (linear interpolation, like NumPy) — e.g. the 95th percentile of latencies. Set 'p' (0–100, default 50 = median). Pass values separated by commas or spaces.",
+                 ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
+                  "p": ["type": "string", "description": "Percentile 0–100 (default 50)."]],
                  required: ["data"]),
             tool("histogram", "Render a text histogram of a number list — buckets the values into bins and shows the distribution. Set 'bins' (default 10). Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
@@ -3060,6 +3065,16 @@ struct ToolAgent: Sendable {
             }
             let f = Quartiles.fmt
             return ("Q1 \(f(q.q1)), median \(f(q.q2)), Q3 \(f(q.q3)), IQR \(f(q.iqr)) (min \(f(nums.min()!)), max \(f(nums.max()!)))", [])
+
+        case "percentile":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
+            let nums = NumberStats.parse(data)
+            let p = Double(arg("p") ?? "") ?? 50
+            guard let v = Percentile.value(nums, p: p) else {
+                return ("Couldn't parse any numbers from the data.", [])
+            }
+            let pClamped = Swift.max(0, Swift.min(100, p))
+            return ("P\(Quartiles.fmt(pClamped)) = \(Quartiles.fmt((v * 1000).rounded() / 1000)) (n=\(nums.count)).", [])
 
         case "histogram":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
