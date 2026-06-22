@@ -949,11 +949,15 @@ struct ToolAgent: Sendable {
         // the oldest turns into one summary (DeepSeek's window is large + cheap).
         let history = await compactHistory(history, threadID: threadID, onStatus: onStatus)
         var convo: [[String: Any]] = [["role": "system", "content": Self.systemPrompt]]
-        // Long-term memory: pinned facts are ALWAYS in context, never compacted away.
+        // Long-term memory: pinned facts are ALWAYS in context, never compacted away. Build the
+        // block deterministically (sorted + de-duped) so this leading prefix stays byte-stable
+        // across sessions — that's what lets DeepSeek's context cache hit on it.
         if let facts = try? await store.allPinnedFacts(), !facts.isEmpty {
-            let block = facts.map { "- \($0.fact)" }.joined(separator: "\n")
-            convo.append(["role": "system",
-                          "content": "PINNED FACTS the user wants you to always remember:\n\(block)"])
+            let block = PromptCachePrefix.stableFactsBlock(facts.map(\.fact))
+            if !block.isEmpty {
+                convo.append(["role": "system",
+                              "content": "PINNED FACTS the user wants you to always remember:\n\(block)"])
+            }
         }
         for m in history where m.role == .user || m.role == .assistant || m.role == .system {
             let t = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
