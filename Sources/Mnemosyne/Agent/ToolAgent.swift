@@ -939,6 +939,9 @@ struct ToolAgent: Sendable {
             deepSeek: deepSeek, temperature: temperature,
             onReasoning: { reasoning in
                 if let snip = DeepSeekReasoning.snippet(reasoning) { onStatus("💭 " + snip) }
+            },
+            onUsage: { usage in
+                if let note = DeepSeekUsage.cacheNote(usage) { onStatus("⚡︎ " + note) }
             })
         // Loop-guard (Claude Code/Codex best practice): never run the SAME tool with
         // the SAME args twice in a turn — return the prior result and nudge the model

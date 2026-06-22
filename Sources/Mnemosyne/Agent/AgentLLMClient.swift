@@ -16,6 +16,10 @@ struct AgentLLMClient: Fathom.LLMClient {
     /// this sink receives that reasoning per round so the tool-loop can surface a "thinking"
     /// trace. nil (default) ⇒ reasoning is ignored, exactly as before.
     var onReasoning: (@Sendable (String) -> Void)? = nil
+    /// DeepSeek-native: per-round token usage, including the context-cache counters
+    /// (`prompt_cache_hit_tokens`/miss) the OpenAI schema omits. If set, fires each round so the
+    /// loop can surface a cache-savings note. nil (default) ⇒ usage is ignored.
+    var onUsage: (@Sendable (DeepSeekUsage.Usage) -> Void)? = nil
 
     func complete(messages: [Fathom.ChatMessage],
                   tools: [[String: Any]]) async throws -> Fathom.Completion {
@@ -28,6 +32,9 @@ struct AgentLLMClient: Fathom.LLMClient {
         let data = try await deepSeek.rawChat(body: JSONSerialization.data(withJSONObject: body))
         if let sink = onReasoning, let reasoning = DeepSeekReasoning.extract(from: data) {
             sink(reasoning)
+        }
+        if let sink = onUsage, let usage = DeepSeekUsage.parse(from: data) {
+            sink(usage)
         }
         return try Fathom.DeepSeekClient.parseCompletion(data)
     }
