@@ -242,6 +242,7 @@ struct ToolAgent: Sendable {
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • word_diff(a, b) — word-level diff of two texts (added vs removed words).
     • text_similarity(a, b) — Jaccard word-overlap similarity of two texts (0–100%).
+    • edit_distance(a, b) — Levenshtein edit distance + similarity % (typos, fuzzy matching).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
     • wrap_text(text, width) — word-wrap text to a column width (preserves paragraphs).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
@@ -529,6 +530,10 @@ struct ToolAgent: Sendable {
             tool("text_similarity", "Measure how similar two texts are — a Jaccard word-overlap ratio (0–100%). Use to gauge how alike two notes/passages are.",
                  ["a": ["type": "string", "description": "The first text."],
                   "b": ["type": "string", "description": "The second text."]],
+                 required: ["a", "b"]),
+            tool("edit_distance", "Levenshtein edit distance between two strings — the minimum single-character edits to turn one into the other, plus a similarity %. Good for typos / fuzzy matching.",
+                 ["a": ["type": "string", "description": "The first string."],
+                  "b": ["type": "string", "description": "The second string."]],
                  required: ["a", "b"]),
             tool("reindent", "Indent or dedent a block of text. mode 'indent' adds 'spaces' leading spaces to each line; mode 'dedent' strips the common leading whitespace. Handy for code snippets.",
                  ["text": ["type": "string", "description": "The text to reindent."],
@@ -2660,6 +2665,12 @@ struct ToolAgent: Sendable {
             guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
             let pct = Int((Similarity.jaccard(a, b) * 100).rounded())
             return ("Similarity: \(pct)% (Jaccard word overlap).", [])
+
+        case "edit_distance":
+            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' strings.", []) }
+            let dist = Levenshtein.distance(a, b)
+            let pct = Int((Levenshtein.ratio(a, b) * 100).rounded())
+            return ("Edit distance: \(dist) (\(pct)% similar).", [])
 
         case "extract_json":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
