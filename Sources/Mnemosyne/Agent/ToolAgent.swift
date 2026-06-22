@@ -250,6 +250,7 @@ struct ToolAgent: Sendable {
     • temperature(value, from, to) — convert between °C, °F, and K.
     • color(value) — convert hex ↔ RGB (#FF5733 ↔ rgb(255, 87, 51)).
     • luhn(value) — validate a number's Luhn checksum (cards, IMEIs, IDs).
+    • validate_email(email) — check whether a string is a well-formed email address.
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
@@ -554,6 +555,9 @@ struct ToolAgent: Sendable {
             tool("luhn", "Check whether a number passes the Luhn checksum (used by credit-card numbers, IMEIs, and many IDs). Spaces and dashes are ignored.",
                  ["value": ["type": "string", "description": "The number to validate."]],
                  required: ["value"]),
+            tool("validate_email", "Check whether a string is a well-formed email address (local@domain.tld). Distinct from extract_emails, which finds them in text.",
+                 ["email": ["type": "string", "description": "The email address to validate."]],
+                 required: ["email"]),
             tool("percentage", "Everyday percentage math. mode 'of' → a% of b; 'what_percent' → a is what % of b; 'change' → percent change from a to b. E.g. mode=of, a=10, b=200.",
                  ["mode": ["type": "string", "enum": ["of", "what_percent", "change"], "description": "Which calculation."],
                   "a": ["type": "number", "description": "First number."],
@@ -2624,6 +2628,10 @@ struct ToolAgent: Sendable {
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
             let valid = Luhn.isValid(value)
             return ("\(value) is \(valid ? "valid" : "invalid") (Luhn checksum).", [])
+
+        case "validate_email":
+            guard let email = arg("email"), !email.isEmpty else { return ("Missing 'email'.", []) }
+            return ("'\(email)' is \(EmailValidator.isValid(email) ? "a valid" : "not a valid") email address.", [])
 
         case "percentage":
             guard let mode = arg("mode"),
