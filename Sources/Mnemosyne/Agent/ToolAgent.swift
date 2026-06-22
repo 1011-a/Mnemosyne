@@ -228,6 +228,7 @@ struct ToolAgent: Sendable {
     • html_entities(text, mode) — escape/unescape HTML entities (< ↔ &lt;).
     • url_encode(text, mode) — percent-encode/decode text for URLs (hello world ↔ hello%20world).
     • caesar(text, shift) — Caesar/ROT-N cipher a string (default ROT13).
+    • nato(text) — spell text in the NATO phonetic alphabet (Alfa Bravo Charlie…).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
@@ -480,6 +481,9 @@ struct ToolAgent: Sendable {
             tool("caesar", "Caesar-cipher (ROT-N) a string — shift each letter by 'shift' positions (default 13 = ROT13). Case and non-letters preserved. ROT13 decodes itself.",
                  ["text": ["type": "string", "description": "The text to shift."],
                   "shift": ["type": "integer", "description": "Letters to shift (default 13). Negative to decode a forward shift."]],
+                 required: ["text"]),
+            tool("nato", "Spell text using the NATO phonetic alphabet (Alfa, Bravo, Charlie…) — read out a code, name, or confirmation number unambiguously over the phone. Digits and punctuation handled too.",
+                 ["text": ["type": "string", "description": "The text to spell out phonetically."]],
                  required: ["text"]),
             tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
                  ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
@@ -2607,6 +2611,11 @@ struct ToolAgent: Sendable {
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             let n = Int(arg("shift") ?? "") ?? 13
             return (Caesar.shift(text, by: n), [])
+
+        case "nato":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let spelled = NatoPhonetic.spell(text) else { return ("Nothing to spell.", []) }
+            return (spelled, [])
 
         case "make_checklist":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of items).", []) }
