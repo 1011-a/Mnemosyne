@@ -240,6 +240,7 @@ struct ToolAgent: Sendable {
     • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
     • number_to_words(value) — spell an integer in English words (1234 → 'one thousand…').
     • ordinal(value) — format a number as an ordinal (23 → 23rd).
+    • gcd_lcm(a, b) — greatest common divisor and least common multiple of two integers.
     • color(value) — convert hex ↔ RGB (#FF5733 ↔ rgb(255, 87, 51)).
     • luhn(value) — validate a number's Luhn checksum (cards, IMEIs, IDs).
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
@@ -511,6 +512,10 @@ struct ToolAgent: Sendable {
             tool("ordinal", "Format a number as an ordinal — 1 → 1st, 23 → 23rd, 111 → 111th (handles the 11/12/13 exceptions).",
                  ["value": ["type": "string", "description": "The integer to make ordinal."]],
                  required: ["value"]),
+            tool("gcd_lcm", "Compute the greatest common divisor and least common multiple of two integers. E.g. a=12, b=18 → gcd 6, lcm 36.",
+                 ["a": ["type": "integer", "description": "First integer."],
+                  "b": ["type": "integer", "description": "Second integer."]],
+                 required: ["a", "b"]),
             tool("color", "Convert a color between hex and RGB — '#FF5733' → rgb(255, 87, 51), or '255,87,51' → #FF5733. Supports shorthand like #fff.",
                  ["value": ["type": "string", "description": "A hex color (#RRGGBB or #RGB) or 'r,g,b'."]],
                  required: ["value"]),
@@ -2529,6 +2534,10 @@ struct ToolAgent: Sendable {
                 return ("Need an integer 'value'.", [])
             }
             return (Ordinal.format(n), [])
+
+        case "gcd_lcm":
+            guard let a = Int(arg("a") ?? ""), let b = Int(arg("b") ?? "") else { return ("Need integer 'a' and 'b'.", []) }
+            return ("gcd(\(a), \(b)) = \(MathGCD.gcd(a, b)), lcm = \(MathGCD.lcm(a, b))", [])
 
         case "color":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
