@@ -242,6 +242,7 @@ struct ToolAgent: Sendable {
     • ordinal(value) — format a number as an ordinal (23 → 23rd).
     • gcd_lcm(a, b) — greatest common divisor and least common multiple of two integers.
     • factorize(value) — prime check or prime factorization (60 → 2 × 2 × 3 × 5).
+    • temperature(value, from, to) — convert between °C, °F, and K.
     • color(value) — convert hex ↔ RGB (#FF5733 ↔ rgb(255, 87, 51)).
     • luhn(value) — validate a number's Luhn checksum (cards, IMEIs, IDs).
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
@@ -520,6 +521,11 @@ struct ToolAgent: Sendable {
             tool("factorize", "Tell whether a number is prime, or give its prime factorization — e.g. 60 → 2 × 2 × 3 × 5.",
                  ["value": ["type": "integer", "description": "The integer to factorize (2 … 1e12)."]],
                  required: ["value"]),
+            tool("temperature", "Convert a temperature between Celsius, Fahrenheit, and Kelvin. E.g. value=100, from=C, to=F → 212.",
+                 ["value": ["type": "number", "description": "The temperature value."],
+                  "from": ["type": "string", "description": "Source unit: C, F, or K."],
+                  "to": ["type": "string", "description": "Target unit: C, F, or K."]],
+                 required: ["value", "from", "to"]),
             tool("color", "Convert a color between hex and RGB — '#FF5733' → rgb(255, 87, 51), or '255,87,51' → #FF5733. Supports shorthand like #fff.",
                  ["value": ["type": "string", "description": "A hex color (#RRGGBB or #RGB) or 'r,g,b'."]],
                  required: ["value"]),
@@ -2549,6 +2555,15 @@ struct ToolAgent: Sendable {
             if PrimeUtil.isPrime(n) { return ("\(n) is prime.", []) }
             let factors = PrimeUtil.factorize(n)
             return ("\(n) = \(factors.map(String.init).joined(separator: " × "))", [])
+
+        case "temperature":
+            guard let value = Double(arg("value") ?? ""), let from = arg("from"), let to = arg("to") else {
+                return ("Need numeric 'value' and 'from'/'to' units (C, F, or K).", [])
+            }
+            guard let result = TempConvert.convert(value, from: from, to: to) else {
+                return ("Units must be C, F, or K.", [])
+            }
+            return ("\(TempConvert.fmt(value))° \(from.uppercased().prefix(1)) = \(TempConvert.fmt(result))° \(to.uppercased().prefix(1))", [])
 
         case "color":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
