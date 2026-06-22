@@ -235,6 +235,7 @@ struct ToolAgent: Sendable {
     • case_style(text, style) — convert identifier between snake/camel/kebab/pascal case.
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • count_text(text) — characters/words/lines/sentences of provided text.
+    • count_occurrences(text, needle, case_sensitive, whole_word) — count how often a word/phrase appears.
     • palindrome(text) — check if text reads the same forwards/backwards (ignoring case/punctuation).
     • anagram(a, b) — check whether two phrases are anagrams (same letters rearranged).
     • reverse(text, mode) — reverse text by characters or by word order.
@@ -527,6 +528,12 @@ struct ToolAgent: Sendable {
             tool("count_text", "Count characters (with/without spaces), words, lines, and sentences of some text. Quick stats on a pasted passage.",
                  ["text": ["type": "string", "description": "The text to measure."]],
                  required: ["text"]),
+            tool("count_occurrences", "Count how many times a word or phrase appears in some text. Case-insensitive by default; set case_sensitive=true or whole_word=true to refine. Overlapping matches aren't double-counted.",
+                 ["text": ["type": "string", "description": "The text to search."],
+                  "needle": ["type": "string", "description": "The word/phrase to count."],
+                  "case_sensitive": ["type": "boolean", "description": "Match case exactly (default false)."],
+                  "whole_word": ["type": "boolean", "description": "Only count whole-word matches (default false)."]],
+                 required: ["text", "needle"]),
             tool("palindrome", "Check whether text reads the same forwards and backwards (ignoring case and punctuation). E.g. 'A man, a plan, a canal: Panama'.",
                  ["text": ["type": "string", "description": "The text to check."]],
                  required: ["text"]),
@@ -2727,6 +2734,16 @@ struct ToolAgent: Sendable {
         case "count_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             return (TextCounts.report(text), [])
+
+        case "count_occurrences":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let needle = arg("needle"), !needle.isEmpty else { return ("Missing 'needle' (what to count).", []) }
+            let cs = (arg("case_sensitive") ?? "false").lowercased() == "true"
+            let ww = (arg("whole_word") ?? "false").lowercased() == "true"
+            guard let n = OccurrenceCounter.count(in: text, needle: needle, caseSensitive: cs, wholeWord: ww) else {
+                return ("Nothing to count.", [])
+            }
+            return ("'\(needle)' appears \(n) time\(n == 1 ? "" : "s")\(ww ? " (whole word)" : "")\(cs ? " (case-sensitive)" : "").", [])
 
         case "palindrome":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
