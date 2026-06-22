@@ -113,6 +113,10 @@ struct IngestView: View {
                                             onChoose: { showingImagePicker = true })
                         .id(activityImageVersion)
                 }
+                // Streaming console of what ingest is doing right now — shown under every
+                // scene so a slow step (audio transcription, OCR) visibly scrolls instead of
+                // looking frozen.
+                IngestLogConsole(progress: progress)
             }
 
             if !suggestions.isEmpty {
