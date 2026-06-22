@@ -200,6 +200,7 @@ struct ToolAgent: Sendable {
     • json_value(item, path) — extract a value by path (address.city, items[0].id, [2]).
     • json_to_table(item) — render a JSON array-of-objects (or object) as an aligned markdown table.
     • json_to_csv(item) — convert a JSON array-of-objects (or object) to CSV (RFC-4180 quoting).
+    • json_keys(item) — list every unique key path in a JSON file (user.name, items[].id).
     • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
     • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
     • quick_summary(item) — instant extractive summary (top sentences, no AI model, offline).
@@ -371,6 +372,8 @@ struct ToolAgent: Sendable {
             tool("json_to_table", "Render a JSON file as an aligned MARKDOWN table — best for an array of objects (a column per key), also handles a single object (key/value) or an array of scalars. Use when the user wants to SEE a JSON export.",
                  ["item": item], required: ["item"]),
             tool("json_to_csv", "Convert a JSON file (array of objects, or a single object) into CSV — proper RFC-4180 quoting. Use to export a JSON response for a spreadsheet.",
+                 ["item": item], required: ["item"]),
+            tool("json_keys", "List every unique key PATH in a JSON file — 'user.name', 'items[].id' — a flat view of the structure. Pair with json_value to read a path.",
                  ["item": item], required: ["item"]),
             tool("text_stats", "Readability + length metrics for a file — word/sentence counts, estimated reading time, and a Flesch Reading Ease score with a plain-language band. Use to answer 'how long is this?' or 'how hard is it to read?'.",
                  ["item": item], required: ["item"]),
@@ -2063,6 +2066,17 @@ struct ToolAgent: Sendable {
             }
             let note = jsonRows.count > maxRows + 1 ? "\n…(showing first \(maxRows) of \(jsonRows.count - 1) rows)" : ""
             return ("\(it.title) as CSV:\n```\n\(csv)\n```\(note)", [])
+
+        case "json_keys":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Listing JSON keys in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let paths = JSONKeys.paths(text), !paths.isEmpty else {
+                return ("'\(it.title)' isn't a JSON object/array with keys.", [])
+            }
+            return ("\(paths.count) key path(s) in '\(it.title)':\n" + paths.map { "  \($0)" }.joined(separator: "\n"), [])
 
         case "csv_column_stats":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
