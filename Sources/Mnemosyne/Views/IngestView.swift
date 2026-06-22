@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Point Mnemosyne at a folder and watch it absorb everything inside.
 struct IngestView: View {
@@ -17,6 +18,10 @@ struct IngestView: View {
     @State private var activityTheme: LiveActivityTheme = .pixelCity
     /// Bumped when the custom backdrop image changes, to force a refresh.
     @State private var activityImageVersion = 0
+    /// Drives the SwiftUI `.fileImporter` for picking a backdrop image. Using the native
+    /// file importer instead of a hand-rolled `NSOpenPanel` — the latter proved unreliable in
+    /// this bundle (hung with `begin`, crashed with `runModal`).
+    @State private var showingImagePicker = false
 
     var body: some View {
         ScrollView {
@@ -76,7 +81,7 @@ struct IngestView: View {
                                 services.settings.liveActivityTheme = theme
                                 // Choosing Custom Image with none set yet → prompt right away.
                                 if theme == .customImage, services.settings.liveActivityImagePath.isEmpty {
-                                    chooseActivityImage()
+                                    showingImagePicker = true
                                 }
                             } label: {
                                 Label(theme.label, systemImage: activityTheme == theme ? "checkmark" : theme.icon)
@@ -84,7 +89,7 @@ struct IngestView: View {
                         }
                         if activityTheme == .customImage {
                             Divider()
-                            Button { chooseActivityImage() } label: { Label("Choose image…", systemImage: "photo") }
+                            Button { showingImagePicker = true } label: { Label("Choose image…", systemImage: "photo") }
                         }
                     } label: {
                         HStack(spacing: 4) {
@@ -105,7 +110,7 @@ struct IngestView: View {
                 case .customImage:
                     CustomImageActivityView(progress: progress,
                                             imagePath: services.settings.liveActivityImagePath,
-                                            onChoose: chooseActivityImage)
+                                            onChoose: { showingImagePicker = true })
                         .id(activityImageVersion)
                 }
             }
@@ -184,6 +189,11 @@ struct IngestView: View {
                 }
             }
         }
+        .fileImporter(isPresented: $showingImagePicker,
+                      allowedContentTypes: [.image],
+                      allowsMultipleSelection: false) { result in
+            handlePickedImage(result)
+        }
     }
 
     /// Reflects the ENGINE the user actually picked, not always Gemma.
@@ -260,37 +270,27 @@ struct IngestView: View {
         }
     }
 
-    /// Pick a backdrop image for the Custom Image theme; copy it into Application Support
-    /// (so it persists even if the original moves) and switch to the theme.
-    ///
-    /// This can be invoked either from a SwiftUI Menu button OR a plain button (the Custom
-    /// Image empty state). Running a modal `NSOpenPanel` while a menu is still dismissing can
-    /// deadlock, so we defer to the next runloop tick. We then use `runModal()` (like the
-    /// folder/bookmarks pickers) rather than the modeless `begin`, which could open behind the
-    /// window and leave the app looking stuck. `activate` brings the panel to the front.
-    private func chooseActivityImage() {
-        DispatchQueue.main.async {
-            let panel = NSOpenPanel()
-            panel.canChooseFiles = true
-            panel.canChooseDirectories = false
-            panel.allowsMultipleSelection = false
-            panel.allowedFileTypes = NSImage.imageTypes   // UTI-free: avoids extra imports
-            panel.prompt = "Use image"
-            panel.message = "Choose a backdrop image"
-            NSApp.activate(ignoringOtherApps: true)
-            guard panel.runModal() == .OK, let src = panel.url else { return }
-            let fm = FileManager.default
-            let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Mnemosyne")
-            try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            let ext = src.pathExtension.isEmpty ? "png" : src.pathExtension
-            let dest = URL(fileURLWithPath: dir).appendingPathComponent("activity-bg.\(ext)")
-            try? fm.removeItem(at: dest)
-            guard (try? fm.copyItem(at: src, to: dest)) != nil else { return }
-            services.settings.liveActivityImagePath = dest.path
-            services.settings.liveActivityTheme = .customImage
-            activityTheme = .customImage
-            activityImageVersion += 1
-        }
+    /// Handle the backdrop image picked via SwiftUI's native `.fileImporter`. Copies it into
+    /// Application Support (so it persists even if the original moves) and switches to the theme.
+    /// Uses the native importer rather than a hand-rolled `NSOpenPanel`, which proved unreliable
+    /// in this bundle (hung with `begin`, crashed with `runModal`).
+    private func handlePickedImage(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result, let src = urls.first else { return }
+        // User-selected URLs are security-scoped; bracket the read access.
+        let scoped = src.startAccessingSecurityScopedResource()
+        defer { if scoped { src.stopAccessingSecurityScopedResource() } }
+        let fm = FileManager.default
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Mnemosyne")
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let ext = src.pathExtension.isEmpty ? "png" : src.pathExtension
+        let dest = URL(fileURLWithPath: dir).appendingPathComponent("activity-bg.\(ext)")
+        try? fm.removeItem(at: dest)
+        // Copy via Data so it works whether or not the source stays accessible.
+        guard let data = try? Data(contentsOf: src), (try? data.write(to: dest)) != nil else { return }
+        services.settings.liveActivityImagePath = dest.path
+        services.settings.liveActivityTheme = .customImage
+        activityTheme = .customImage
+        activityImageVersion += 1
     }
 
     private func chooseBookmarks() {
