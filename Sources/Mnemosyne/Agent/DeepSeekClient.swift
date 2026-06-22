@@ -90,6 +90,32 @@ struct DeepSeekClient: Sendable {
 
     private var deepSeekBaseURL: URL { config.deepSeekBaseURL }
 
+    /// DeepSeek-native beta **chat-prefix completion**: continue from `prefix` (an assistant turn
+    /// flagged `prefix: true`) rather than starting fresh — e.g. force a reply to begin with a
+    /// ```json fence. Posts to the `/beta` endpoint. `stop` halts the model at a delimiter (e.g.
+    /// "```"). Returns the continuation only (the prefix is not echoed back). See `DeepSeekPrefix`.
+    func prefixComplete(prior: [[String: Any]], prefix: String,
+                        temperature: Double = 0.3, stop: [String] = []) async throws -> String {
+        let body = DeepSeekPrefix.body(prior: prior, prefix: prefix,
+                                       model: config.deepSeekModel, temperature: temperature, stop: stop)
+        let data = try await rawChatBeta(body: try JSONSerialization.data(withJSONObject: body))
+        let parsed = try JSONDecoder().decode(CompletionResponse.self, from: data)
+        return parsed.choices.first?.message.content ?? ""
+    }
+
+    /// POST a pre-serialized JSON body to the `/beta` chat-completions endpoint (where DeepSeek's
+    /// prefix / FIM features live). Mirrors `rawChat`'s auth + error handling.
+    func rawChatBeta(body: Data) async throws -> Data {
+        var req = URLRequest(url: DeepSeekPrefix.betaBaseURL(deepSeekBaseURL).appendingPathComponent("chat/completions"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        try authorize(&req)
+        req.httpBody = body
+        let (data, resp) = try await session.data(for: req)
+        try Self.check(resp, data)
+        return data
+    }
+
     /// Stream an answer from a pre-serialized JSON body (must set "stream": true).
     /// Used by the agentic loop to stream its final answer after tool rounds.
     func rawStream(body: Data) -> AsyncThrowingStream<StreamDelta, Error> {
