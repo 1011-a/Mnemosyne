@@ -185,6 +185,7 @@ struct ToolAgent: Sendable {
     • generate_toc(item) — clickable markdown TOC ([Heading](#anchor)) from a file's headings.
     • find_in_item(item, query) — grep one file for a phrase; returns matching lines with line numbers.
     • extract_quotes(item) — pull quoted passages (straight + smart quotes) from a file.
+    • extract_ips(item) — pull valid IPv4 addresses from a file (octets validated).
     • read_frontmatter(item) — parse a note's leading '---' YAML metadata block into fields.
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
@@ -310,6 +311,8 @@ struct ToolAgent: Sendable {
             tool("read_frontmatter", "Read the YAML-style frontmatter (the leading '---' metadata block) of a note — keys like title, tags, date. Distinct from extract_key_values (which scans the whole file).",
                  ["item": item], required: ["item"]),
             tool("extract_quotes", "Pull quoted passages from a file — straight (\"…\") and smart (curly) quotes. Use to find citations or highlighted lines in a note.",
+                 ["item": item], required: ["item"]),
+            tool("extract_ips", "Pull valid IPv4 addresses from a file (logs, configs) — each octet validated 0–255. Use for log analysis.",
                  ["item": item], required: ["item"]),
             tool("keyword_extract", "Surface a file's most salient TERMS by frequency (a quick topical fingerprint) — useful to suggest labels or grasp what a document is about at a glance.",
                  ["item": item], required: ["item"]),
@@ -1780,6 +1783,17 @@ struct ToolAgent: Sendable {
                 return ("No quoted passages found in '\(it.title)'.", [])
             }
             return ("Quotes in '\(it.title)':\n\(summary)", [])
+
+        case "extract_ips":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding IP addresses in \(it.title)…")
+            let full = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = IPExtractor.summary(full) else {
+                return ("No IPv4 addresses found in '\(it.title)'.", [])
+            }
+            return ("IPs in '\(it.title)':\n\(summary)", [])
 
         case "read_frontmatter":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
