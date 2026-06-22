@@ -222,6 +222,7 @@ struct ToolAgent: Sendable {
     • compare_lists(a, b, mode) — set ops on two lists (common/only_a/only_b/union).
     • strip_markdown(text) — remove markdown formatting to get plain prose.
     • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
+    • number_to_words(value) — spell an integer in English words (1234 → 'one thousand…').
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
@@ -432,6 +433,9 @@ struct ToolAgent: Sendable {
                  required: ["text"]),
             tool("number_bases", "Show an integer in decimal, hex, binary, and octal. Input may be decimal or prefixed (0x.., 0b.., 0o..). E.g. '255' or '0xff'.",
                  ["value": ["type": "string", "description": "The integer, decimal or 0x/0b/0o-prefixed."]],
+                 required: ["value"]),
+            tool("number_to_words", "Spell an integer in English words — e.g. 1234 → 'one thousand two hundred thirty-four'. Handles zero and negatives, up to trillions.",
+                 ["value": ["type": "string", "description": "The integer to spell out."]],
                  required: ["value"]),
             tool("percentage", "Everyday percentage math. mode 'of' → a% of b; 'what_percent' → a is what % of b; 'change' → percent change from a to b. E.g. mode=of, a=10, b=200.",
                  ["mode": ["type": "string", "enum": ["of", "what_percent", "change"], "description": "Which calculation."],
@@ -2279,6 +2283,13 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse '\(value)' — use bytes or a size like '1.5 MB'.", [])
             }
             return ("\(value) = \(bytes) bytes", [])
+
+        case "number_to_words":
+            guard let value = arg("value"), let n = Int(value.trimmingCharacters(in: .whitespaces)) else {
+                return ("Need an integer 'value'.", [])
+            }
+            guard let words = NumberWords.spell(n) else { return ("That number is too large to spell out.", []) }
+            return ("\(n) = \(words)", [])
 
         case "percentage":
             guard let mode = arg("mode"),
