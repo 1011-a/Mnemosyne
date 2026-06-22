@@ -244,6 +244,7 @@ struct ToolAgent: Sendable {
     • compare_lists(a, b, mode) — set ops on two lists (common/only_a/only_b/union).
     • strip_markdown(text) — remove markdown formatting to get plain prose.
     • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
+    • convert_base(value, from, to) — convert an integer between any bases 2–36.
     • number_to_words(value) — spell an integer in English words (1234 → 'one thousand…').
     • number_format(value) — add thousands separators (1234567 → 1,234,567).
     • ordinal(value) — format a number as an ordinal (23 → 23rd).
@@ -536,6 +537,11 @@ struct ToolAgent: Sendable {
             tool("number_bases", "Show an integer in decimal, hex, binary, and octal. Input may be decimal or prefixed (0x.., 0b.., 0o..). E.g. '255' or '0xff'.",
                  ["value": ["type": "string", "description": "The integer, decimal or 0x/0b/0o-prefixed."]],
                  required: ["value"]),
+            tool("convert_base", "Convert an integer between any numeric bases 2–36 — e.g. value=FF, from=16, to=10 → 255.",
+                 ["value": ["type": "string", "description": "The number, in base 'from'."],
+                  "from": ["type": "integer", "description": "Source base (2–36)."],
+                  "to": ["type": "integer", "description": "Target base (2–36)."]],
+                 required: ["value", "from", "to"]),
             tool("number_to_words", "Spell an integer in English words — e.g. 1234 → 'one thousand two hundred thirty-four'. Handles zero and negatives, up to trillions.",
                  ["value": ["type": "string", "description": "The integer to spell out."]],
                  required: ["value"]),
@@ -2576,6 +2582,16 @@ struct ToolAgent: Sendable {
                 return ("'\(value)' isn't a valid integer (try decimal or 0x/0b/0o-prefixed).", [])
             }
             return (described, [])
+
+        case "convert_base":
+            guard let value = arg("value"), !value.isEmpty,
+                  let from = Int(arg("from") ?? ""), let to = Int(arg("to") ?? "") else {
+                return ("Need 'value' and integer 'from'/'to' bases.", [])
+            }
+            guard let out = BaseConvert.convert(value, from: from, to: to) else {
+                return ("Couldn't convert — bases must be 2–36 and '\(value)' valid in base \(from).", [])
+            }
+            return ("\(value) (base \(from)) = \(out) (base \(to))", [])
 
         case "roman_numeral":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
