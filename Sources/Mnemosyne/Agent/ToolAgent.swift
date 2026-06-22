@@ -187,6 +187,7 @@ struct ToolAgent: Sendable {
     • extract_quotes(item) — pull quoted passages (straight + smart quotes) from a file.
     • extract_ips(item) — pull valid IPv4 addresses from a file (octets validated).
     • extract_times(item) — pull times of day (3:30 PM, 09:00, 12pm) from a file.
+    • extract_percentages(item) — pull percentages and summarize (count, avg, min, max).
     • read_frontmatter(item) — parse a note's leading '---' YAML metadata block into fields.
     • extract_tables(item) — parse markdown tables (specs, schedules, pricing) into rows.
     • inspect_csv(item) — parse a CSV/TSV spreadsheet: columns, row count, sample rows.
@@ -321,6 +322,8 @@ struct ToolAgent: Sendable {
             tool("extract_ips", "Pull valid IPv4 addresses from a file (logs, configs) — each octet validated 0–255. Use for log analysis.",
                  ["item": item], required: ["item"]),
             tool("extract_times", "Pull times of day from a file — '3:30 PM', '09:00', '12pm'. Validated hours/minutes. Use to find schedule/meeting times.",
+                 ["item": item], required: ["item"]),
+            tool("extract_percentages", "Pull percentage values from a file ('45%', '12.5 %') and summarize them — count plus average, min, and max. Use for stats/report notes.",
                  ["item": item], required: ["item"]),
             tool("keyword_extract", "Surface a file's most salient TERMS by frequency (a quick topical fingerprint) — useful to suggest labels or grasp what a document is about at a glance.",
                  ["item": item], required: ["item"]),
@@ -1830,6 +1833,17 @@ struct ToolAgent: Sendable {
                 return ("No times of day found in '\(it.title)'.", [])
             }
             return ("Times in '\(it.title)':\n\(summary)", [])
+
+        case "extract_percentages":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding percentages in \(it.title)…")
+            let full = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = PercentExtractor.summary(full) else {
+                return ("No percentages found in '\(it.title)'.", [])
+            }
+            return ("Percentages in '\(it.title)':\n\(summary)", [])
 
         case "read_frontmatter":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
