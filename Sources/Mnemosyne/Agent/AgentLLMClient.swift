@@ -12,13 +12,13 @@ struct AgentLLMClient: Fathom.LLMClient {
     let deepSeek: DeepSeekClient
     var temperature: Double = 0.3
     /// DeepSeek-native: when `deepseek-reasoner` is the brain, each round also returns a
-    /// `reasoning_content` chain-of-thought that Fathom's `Completion` doesn't model. If set,
-    /// this sink receives that reasoning per round so the tool-loop can surface a "thinking"
-    /// trace. nil (default) ⇒ reasoning is ignored, exactly as before.
+    /// `reasoning_content` chain-of-thought. As of Fathom 1.1.0 the SDK's `Completion` models this
+    /// natively (`reasoningContent`); if set, this sink receives it per round so the tool-loop can
+    /// surface a "thinking" trace. nil (default) ⇒ reasoning is ignored.
     var onReasoning: (@Sendable (String) -> Void)? = nil
     /// DeepSeek-native: per-round token usage, including the context-cache counters
-    /// (`prompt_cache_hit_tokens`/miss) the OpenAI schema omits. If set, fires each round so the
-    /// loop can surface a cache-savings note. nil (default) ⇒ usage is ignored.
+    /// (`prompt_cache_hit_tokens`/miss). Fathom 1.1.0 models these on `Usage`; if set, fires each
+    /// round so the loop can surface a cache-savings note. nil (default) ⇒ usage is ignored.
     var onUsage: (@Sendable (DeepSeekUsage.Usage) -> Void)? = nil
 
     func complete(messages: [Fathom.ChatMessage],
@@ -30,13 +30,23 @@ struct AgentLLMClient: Fathom.LLMClient {
         ]
         if !tools.isEmpty { body["tools"] = tools; body["tool_choice"] = "auto" }
         let data = try await deepSeek.rawChat(body: JSONSerialization.data(withJSONObject: body))
-        if let sink = onReasoning, let reasoning = DeepSeekReasoning.extract(from: data) {
-            sink(reasoning)
+        let completion = try Fathom.DeepSeekClient.parseCompletion(data)
+        // Prefer the SDK's native fields (Fathom ≥ 1.1.0); fall back to the app-side parsers so a
+        // future downgrade still surfaces the trace.
+        if let sink = onReasoning {
+            if let reasoning = completion.reasoningContent ?? DeepSeekReasoning.extract(from: data) {
+                sink(reasoning)
+            }
         }
-        if let sink = onUsage, let usage = DeepSeekUsage.parse(from: data) {
-            sink(usage)
+        if let sink = onUsage {
+            if let u = completion.usage, (u.cacheHitTokens + u.cacheMissTokens) > 0 {
+                sink(DeepSeekUsage.Usage(promptTokens: u.promptTokens, completionTokens: u.completionTokens,
+                                         cacheHitTokens: u.cacheHitTokens, cacheMissTokens: u.cacheMissTokens))
+            } else if let usage = DeepSeekUsage.parse(from: data) {
+                sink(usage)
+            }
         }
-        return try Fathom.DeepSeekClient.parseCompletion(data)
+        return completion
     }
 
     /// Convert the agent loop's raw `[[String: Any]]` conversation (the format DeepSeek's
