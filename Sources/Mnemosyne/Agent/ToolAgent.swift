@@ -213,6 +213,7 @@ struct ToolAgent: Sendable {
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
+    • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
@@ -392,6 +393,10 @@ struct ToolAgent: Sendable {
             tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
                  ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
                  required: ["data"]),
+            tool("format_list", "Reformat a list of items — style 'numbered', 'bullet', 'comma', or 'and' (Oxford-comma sentence). Existing bullets/numbers are stripped first.",
+                 ["text": ["type": "string", "description": "Items, one per line."],
+                  "style": ["type": "string", "enum": ["numbered", "bullet", "comma", "and"], "description": "Output style."]],
+                 required: ["text", "style"]),
             tool("change_case", "Convert text case — set mode to 'upper', 'lower', 'title', or 'sentence'. Use to clean up or normalize a heading or pasted text.",
                  ["text": ["type": "string", "description": "The text to convert."],
                   "mode": ["type": "string", "enum": ["upper", "lower", "title", "sentence"], "description": "Target case."]],
@@ -2202,6 +2207,13 @@ struct ToolAgent: Sendable {
                 return ("No items to turn into a checklist. Pass items one per line.", [])
             }
             return (checklist, [])
+
+        case "format_list":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let style = arg("style"), let out = ListFormatter.format(text, style: style) else {
+                return ("Couldn't format the list. Use style 'numbered', 'bullet', 'comma', or 'and', with items one per line.", [])
+            }
+            return (out, [])
 
         case "change_case":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
