@@ -229,6 +229,7 @@ struct ToolAgent: Sendable {
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
     • headline_case(text) — AP/Chicago title case (minor words stay lowercase).
     • acronym(phrase, skip_minor) — make an acronym from a phrase (Portable Document Format → PDF).
+    • case_style(text, style) — convert identifier between snake/camel/kebab/pascal case.
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • count_text(text) — characters/words/lines/sentences of provided text.
     • palindrome(text) — check if text reads the same forwards/backwards (ignoring case/punctuation).
@@ -475,6 +476,10 @@ struct ToolAgent: Sendable {
                  ["phrase": ["type": "string", "description": "The phrase to acronymize."],
                   "skip_minor": ["type": "boolean", "description": "Skip minor words (the, of, and…). Default false."]],
                  required: ["phrase"]),
+            tool("case_style", "Convert an identifier between styles — 'snake' (snake_case), 'camel' (camelCase), 'kebab' (kebab-case), or 'pascal' (PascalCase). Auto-detects the input's words.",
+                 ["text": ["type": "string", "description": "The identifier/phrase to convert."],
+                  "style": ["type": "string", "enum": ["snake", "camel", "kebab", "pascal"], "description": "Target style."]],
+                 required: ["text", "style"]),
             tool("word_frequency", "Count the most frequent content words in some text (stopwords filtered) — a quick topical fingerprint. Set 'top' to cap how many to return (default 10).",
                  ["text": ["type": "string", "description": "The text to analyze."],
                   "top": ["type": "integer", "description": "How many top words to return (default 10)."]],
@@ -2517,6 +2522,13 @@ struct ToolAgent: Sendable {
             let acronym = AcronymMaker.make(phrase, skipMinor: skipMinor)
             guard !acronym.isEmpty else { return ("No letters to acronymize in '\(phrase)'.", []) }
             return ("\(phrase) → \(acronym)", [])
+
+        case "case_style":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let style = arg("style"), let out = CaseStyle.convert(text, style: style), !out.isEmpty else {
+                return ("Use style 'snake', 'camel', 'kebab', or 'pascal' with an identifier.", [])
+            }
+            return (out, [])
 
         case "word_frequency":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
