@@ -233,6 +233,7 @@ struct ToolAgent: Sendable {
     • count_text(text) — characters/words/lines/sentences of provided text.
     • palindrome(text) — check if text reads the same forwards/backwards (ignoring case/punctuation).
     • reverse(text, mode) — reverse text by characters or by word order.
+    • truncate(text, length, mode) — shorten text to N chars or words with an ellipsis.
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
@@ -488,6 +489,11 @@ struct ToolAgent: Sendable {
                  ["text": ["type": "string", "description": "The text to reverse."],
                   "mode": ["type": "string", "enum": ["chars", "words"], "description": "chars (default) or words."]],
                  required: ["text"]),
+            tool("truncate", "Shorten text to a length with an ellipsis. mode 'chars' (default) limits characters; mode 'words' limits words. Ellipsis added only if cut.",
+                 ["text": ["type": "string", "description": "The text to truncate."],
+                  "length": ["type": "integer", "description": "Max characters (or words)."],
+                  "mode": ["type": "string", "enum": ["chars", "words"], "description": "chars (default) or words."]],
+                 required: ["text", "length"]),
             tool("replace_text", "Find and replace text within a string — replaces every occurrence of 'find' with 'replace' and reports the count. Set case_insensitive to true to ignore case.",
                  ["text": ["type": "string", "description": "The text to transform."],
                   "find": ["type": "string", "description": "The substring to find."],
@@ -2532,6 +2538,12 @@ struct ToolAgent: Sendable {
         case "reverse":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             return ((arg("mode") ?? "chars").lowercased() == "words" ? Reverse.words(text) : Reverse.chars(text), [])
+
+        case "truncate":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let length = Int(arg("length") ?? ""), length > 0 else { return ("Need a positive 'length'.", []) }
+            let byWords = (arg("mode") ?? "chars").lowercased() == "words"
+            return (byWords ? Truncate.toWords(text, length) : Truncate.toChars(text, length), [])
 
         case "replace_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
