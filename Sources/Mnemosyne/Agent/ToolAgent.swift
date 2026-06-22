@@ -199,6 +199,7 @@ struct ToolAgent: Sendable {
     • csv_dedupe(item, by?) — remove duplicate rows (whole-row, or first per key column).
     • csv_transpose(item) — swap rows and columns of a CSV/TSV.
     • csv_distinct(item, column) — list the unique values in a column (SELECT DISTINCT).
+    • csv_types(item) — infer each column's type (number/boolean/date/text).
     • csv_to_json(item) — convert a CSV/TSV file into a JSON array of objects (header → keys).
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
@@ -397,6 +398,8 @@ struct ToolAgent: Sendable {
             tool("csv_distinct", "List the unique values in a CSV/TSV column (SQL SELECT DISTINCT) — explore what's in a column. Call inspect_csv first to see the column names.",
                  ["item": item, "column": ["type": "string", "description": "The column header (case-insensitive)."]],
                  required: ["item", "column"]),
+            tool("csv_types", "Infer the type of each CSV/TSV column — number, boolean, date, text, or empty — by sampling its values. A quick schema view.",
+                 ["item": item], required: ["item"]),
             tool("csv_to_json", "Convert a CSV/TSV file into a JSON array of objects (header row → keys; values stay strings). Use to reshape a spreadsheet for an API or further processing.",
                  ["item": item], required: ["item"]),
             tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
@@ -2214,6 +2217,18 @@ struct ToolAgent: Sendable {
             }
             guard !values.isEmpty else { return ("Column '\(column)' has no values.", []) }
             return ("\(values.count) distinct value(s) in '\(column)':\n" + values.prefix(100).map { "  \($0)" }.joined(separator: "\n"), [])
+
+        case "csv_types":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Inferring column types in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            guard let header = rows.first else { return ("'\(it.title)' has no rows.", []) }
+            let types = CSVTypes.infer(header: header, rows: Array(rows.dropFirst()))
+            return ("Column types in '\(it.title)':\n" + types.map { "  \($0.column): \($0.type)" }.joined(separator: "\n"), [])
 
         case "csv_to_json":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
