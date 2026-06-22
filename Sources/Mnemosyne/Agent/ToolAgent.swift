@@ -273,6 +273,7 @@ struct ToolAgent: Sendable {
     • make_table(data) — format rows into an aligned markdown table (first row = header).
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
     • sparkline(data) — compact one-line trend (▁▂▃▄▅▆▇█) from a number series.
+    • quartiles(data) — Q1/median/Q3/IQR of a list of numbers.
     • tally(data) — count occurrences of each distinct value in a list (GROUP BY).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
     • entity_extract(item) — list the people, organizations, and places mentioned in a file (on-device).
@@ -645,6 +646,9 @@ struct ToolAgent: Sendable {
                  required: ["data"]),
             tool("sparkline", "Render a compact one-line trend (▁▂▃▄▅▆▇█) from a number series — a glanceable inline trend (e.g. activity over time). Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines, e.g. '3 5 4 8 6 9'."]],
+                 required: ["data"]),
+            tool("quartiles", "Compute the quartiles of a list of numbers — Q1, median, Q3, and the interquartile range (IQR). Pass values separated by commas or spaces.",
+                 ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."]],
                  required: ["data"]),
             tool("tally", "Count how often each distinct value appears in a list (a GROUP BY) — statuses, tags, names. Pass values one per line (or comma-separated). Returns a frequency table; pair with bar_chart to visualize it.",
                  ["data": ["type": "string", "description": "Values one per line or comma-separated, e.g. 'open\\nopen\\nclosed'."]],
@@ -2897,6 +2901,15 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse any numbers from the data. Pass values separated by commas or spaces.", [])
             }
             return (spark, [])
+
+        case "quartiles":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
+            let nums = NumberStats.parse(data)
+            guard let q = Quartiles.compute(nums) else {
+                return ("Couldn't parse any numbers from the data.", [])
+            }
+            let f = Quartiles.fmt
+            return ("Q1 \(f(q.q1)), median \(f(q.q2)), Q3 \(f(q.q3)), IQR \(f(q.iqr)) (min \(f(nums.min()!)), max \(f(nums.max()!)))", [])
 
         case "tally":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of values).", []) }
