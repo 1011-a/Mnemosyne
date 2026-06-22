@@ -206,6 +206,7 @@ struct ToolAgent: Sendable {
     • json_to_csv(item) — convert a JSON array-of-objects (or object) to CSV (RFC-4180 quoting).
     • json_keys(item) — list every unique key path in a JSON file (user.name, items[].id).
     • json_pluck(item, key) — pull one field from every object in a JSON array (all emails, etc.).
+    • json_flatten(item) — flatten nested JSON into dotted 'path = value' lines.
     • text_stats(item) — word/sentence counts, reading time, Flesch readability score.
     • task_progress(item) — markdown checklist completion: done vs pending, percent complete.
     • quick_summary(item) — instant extractive summary (top sentences, no AI model, offline).
@@ -407,6 +408,8 @@ struct ToolAgent: Sendable {
             tool("json_pluck", "From a JSON file that's an ARRAY of objects, pull one field from every object — e.g. all 'email' values. Returns the list of values.",
                  ["item": item, "key": ["type": "string", "description": "The object key to pluck from each array element."]],
                  required: ["item", "key"]),
+            tool("json_flatten", "Flatten a nested JSON file into dotted 'path = value' lines (a.b, x[0]) — a flat, scannable view of every value.",
+                 ["item": item], required: ["item"]),
             tool("text_stats", "Readability + length metrics for a file — word/sentence counts, estimated reading time, and a Flesch Reading Ease score with a plain-language band. Use to answer 'how long is this?' or 'how hard is it to read?'.",
                  ["item": item], required: ["item"]),
             tool("task_progress", "Measure a markdown CHECKLIST's completion in a file — counts done vs pending boxes ([x] vs [ ]) and a percent-complete. Unlike extract_action_items (only open TODOs), this reports the whole list including finished items.",
@@ -2229,6 +2232,19 @@ struct ToolAgent: Sendable {
             }
             guard !values.isEmpty else { return ("No object in '\(it.title)' has the key '\(key)'.", []) }
             return ("\(values.count) value(s) for '\(key)':\n" + values.prefix(100).map { "  \($0)" }.joined(separator: "\n"), [])
+
+        case "json_flatten":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Flattening JSON in \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let pairs = JSONFlatten.flatten(text), !pairs.isEmpty else {
+                return ("'\(it.title)' isn't JSON with values to flatten.", [])
+            }
+            let body = pairs.prefix(150).map { "  \($0.path) = \($0.value)" }.joined(separator: "\n")
+            let more = pairs.count > 150 ? "\n  …(+\(pairs.count - 150) more)" : ""
+            return ("\(pairs.count) leaf value(s) in '\(it.title)':\n\(body)\(more)", [])
 
         case "csv_column_stats":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
