@@ -237,6 +237,7 @@ struct ToolAgent: Sendable {
     • truncate(text, length, mode) — shorten text to N chars or words with an ellipsis.
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
+    • word_diff(a, b) — word-level diff of two texts (added vs removed words).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
     • wrap_text(text, width) — word-wrap text to a column width (preserves paragraphs).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
@@ -510,6 +511,10 @@ struct ToolAgent: Sendable {
                   "start": ["type": "string", "description": "The opening marker."],
                   "end": ["type": "string", "description": "The closing marker."]],
                  required: ["text", "start", "end"]),
+            tool("word_diff", "Compare two texts at the WORD level — which words were added vs removed (case-insensitive). Complements the line-level diff tools.",
+                 ["a": ["type": "string", "description": "The first text."],
+                  "b": ["type": "string", "description": "The second text."]],
+                 required: ["a", "b"]),
             tool("reindent", "Indent or dedent a block of text. mode 'indent' adds 'spaces' leading spaces to each line; mode 'dedent' strips the common leading whitespace. Handy for code snippets.",
                  ["text": ["type": "string", "description": "The text to reindent."],
                   "mode": ["type": "string", "enum": ["indent", "dedent"], "description": "indent or dedent."],
@@ -2592,6 +2597,10 @@ struct ToolAgent: Sendable {
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             let width = Int(arg("width") ?? "") ?? 80
             return (TextWrap.wrap(text, width: max(1, width)), [])
+
+        case "word_diff":
+            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
+            return (WordDiff.summary(a, b), [])
 
         case "extract_json":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
