@@ -230,6 +230,7 @@ struct ToolAgent: Sendable {
     • acronym(phrase, skip_minor) — make an acronym from a phrase (Portable Document Format → PDF).
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • count_text(text) — characters/words/lines/sentences of provided text.
+    • palindrome(text) — check if text reads the same forwards/backwards (ignoring case/punctuation).
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
@@ -472,6 +473,9 @@ struct ToolAgent: Sendable {
                  required: ["text"]),
             tool("count_text", "Count characters (with/without spaces), words, lines, and sentences of some text. Quick stats on a pasted passage.",
                  ["text": ["type": "string", "description": "The text to measure."]],
+                 required: ["text"]),
+            tool("palindrome", "Check whether text reads the same forwards and backwards (ignoring case and punctuation). E.g. 'A man, a plan, a canal: Panama'.",
+                 ["text": ["type": "string", "description": "The text to check."]],
                  required: ["text"]),
             tool("replace_text", "Find and replace text within a string — replaces every occurrence of 'find' with 'replace' and reports the count. Set case_insensitive to true to ignore case.",
                  ["text": ["type": "string", "description": "The text to transform."],
@@ -2484,6 +2488,11 @@ struct ToolAgent: Sendable {
         case "count_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             return (TextCounts.report(text), [])
+
+        case "palindrome":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let yes = Palindrome.isPalindrome(text)
+            return ("'\(text)' is \(yes ? "a palindrome" : "not a palindrome").", [])
 
         case "replace_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
