@@ -274,6 +274,7 @@ struct ToolAgent: Sendable {
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • compound_interest(principal, rate, years, times_per_year) — future value with compound interest.
     • loan_payment(principal, rate, years) — monthly loan/mortgage payment + total interest.
+    • tip(bill, percent, people) — tip amount, total, and per-person split.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
     • file_size(value) — bytes ↔ human size (1500000 ↔ '1.5 MB'; '2GB' → bytes).
@@ -698,6 +699,11 @@ struct ToolAgent: Sendable {
                   "rate": ["type": "number", "description": "Annual interest rate, as a percent (e.g. 6 for 6%)."],
                   "years": ["type": "number", "description": "Loan term in years."]],
                  required: ["principal", "rate", "years"]),
+            tool("tip", "Calculate a tip and split a bill — tip amount, grand total, and per-person share. Set 'bill', 'percent' (e.g. 20), and optional 'people' (default 1).",
+                 ["bill": ["type": "number", "description": "The pre-tip bill amount."],
+                  "percent": ["type": "number", "description": "Tip percentage, e.g. 18."],
+                  "people": ["type": "integer", "description": "Split among this many people (default 1)."]],
+                 required: ["bill", "percent"]),
             tool("roman_numeral", "Convert between Arabic and Roman numerals (1–3999), direction auto-detected. E.g. '1994' → MCMXCIV, or 'IV' → 4.",
                  ["value": ["type": "string", "description": "A number (1–3999) or a Roman numeral."]],
                  required: ["value"]),
@@ -3071,6 +3077,18 @@ struct ToolAgent: Sendable {
             default:
                 return ("Unknown mode. Use 'of', 'what_percent', or 'change'.", [])
             }
+
+        case "tip":
+            guard let bill = Double(arg("bill") ?? ""), let percent = Double(arg("percent") ?? "") else {
+                return ("Need numeric 'bill' and 'percent'.", [])
+            }
+            let people = Swift.max(Int(arg("people") ?? "") ?? 1, 1)
+            guard let r = TipCalculator.compute(bill: bill, percent: percent, people: people) else {
+                return ("Bill and percent must be ≥ 0.", [])
+            }
+            let f: (Double) -> String = { String(format: "%.2f", $0) }
+            let split = people > 1 ? " — \(f(r.perPerson)) each (\(people) people)" : ""
+            return ("Tip \(f(r.tip)) (\(Percentage.fmt(percent))%), total \(f(r.total))\(split).", [])
 
         case "loan_payment":
             guard let principal = Double(arg("principal") ?? ""), let rate = Double(arg("rate") ?? ""),
