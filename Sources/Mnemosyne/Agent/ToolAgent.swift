@@ -275,6 +275,7 @@ struct ToolAgent: Sendable {
     • sparkline(data) — compact one-line trend (▁▂▃▄▅▆▇█) from a number series.
     • quartiles(data) — Q1/median/Q3/IQR of a list of numbers.
     • outliers(data, k) — flag outliers in a number list via Tukey's IQR fences.
+    • correlation(x, y) — Pearson r between two equal-length number lists.
     • histogram(data, bins) — text histogram of a number list's distribution.
     • tally(data) — count occurrences of each distinct value in a list (GROUP BY).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
@@ -660,6 +661,10 @@ struct ToolAgent: Sendable {
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
                   "k": ["type": "string", "description": "Fence multiplier (default 1.5; 3 = extreme outliers only)."]],
                  required: ["data"]),
+            tool("correlation", "Pearson correlation coefficient (r, −1…1) between two equal-length number lists — how strongly two series move together. Pass 'x' and 'y' as numbers separated by commas or spaces.",
+                 ["x": ["type": "string", "description": "First series, numbers separated by commas/spaces/newlines."],
+                  "y": ["type": "string", "description": "Second series, same length as x."]],
+                 required: ["x", "y"]),
             tool("tally", "Count how often each distinct value appears in a list (a GROUP BY) — statuses, tags, names. Pass values one per line (or comma-separated). Returns a frequency table; pair with bar_chart to visualize it.",
                  ["data": ["type": "string", "description": "Values one per line or comma-separated, e.g. 'open\\nopen\\nclosed'."]],
                  required: ["data"]),
@@ -2942,6 +2947,19 @@ struct ToolAgent: Sendable {
             }
             let list = outs.map(f).joined(separator: ", ")
             return ("\(outs.count) outlier\(outs.count == 1 ? "" : "s"): \(list) (outside \(f(r.lowerFence))…\(f(r.upperFence)), k=\(f(k))).", [])
+
+        case "correlation":
+            guard let xs = arg("x"), !xs.isEmpty, let ys = arg("y"), !ys.isEmpty else {
+                return ("Missing 'x' and/or 'y' (two number lists).", [])
+            }
+            let x = NumberStats.parse(xs), y = NumberStats.parse(ys)
+            guard x.count == y.count else {
+                return ("x has \(x.count) numbers but y has \(y.count) — the two lists must be the same length.", [])
+            }
+            guard let r = Correlation.pearson(x, y) else {
+                return ("Need at least 2 paired numbers, and neither list can be constant (flat).", [])
+            }
+            return ("r = \(Quartiles.fmt((r * 1000).rounded() / 1000)) (\(Correlation.describe(r)), n=\(x.count))", [])
 
         case "tally":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of values).", []) }
