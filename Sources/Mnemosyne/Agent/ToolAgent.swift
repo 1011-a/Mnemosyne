@@ -224,6 +224,7 @@ struct ToolAgent: Sendable {
     • url_encode(text, mode) — percent-encode/decode text for URLs (hello world ↔ hello%20world).
     • caesar(text, shift) — Caesar/ROT-N cipher a string (default ROT13).
     • nato(text) — spell text in the NATO phonetic alphabet (Alfa Bravo Charlie…).
+    • vigenere(text, key, mode) — Vigenère keyword cipher encode/decode.
     • morse(text, mode) — encode text to Morse code or decode it back (auto-detects).
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
@@ -487,6 +488,11 @@ struct ToolAgent: Sendable {
                  ["text": ["type": "string", "description": "Plain text to encode, or dot/dash Morse to decode."],
                   "mode": ["type": "string", "description": "'encode', 'decode', or omit to auto-detect."]],
                  required: ["text"]),
+            tool("vigenere", "Vigenère cipher — encode or decode text with a keyword (a stronger classic cipher than Caesar). Case preserved, non-letters pass through. Set 'mode' to 'encode' (default) or 'decode'.",
+                 ["text": ["type": "string", "description": "The text to encode or decode."],
+                  "key": ["type": "string", "description": "The keyword (letters only are used)."],
+                  "mode": ["type": "string", "description": "'encode' (default) or 'decode'."]],
+                 required: ["text", "key"]),
             tool("make_checklist", "Turn a list of items into a markdown checklist (- [ ] item). Pass items one per line; existing bullets/numbers are stripped and a leading [x] is kept as done. Use to convert notes or action items into a task list.",
                  ["data": ["type": "string", "description": "Items, one per line, e.g. 'buy milk\\ncall Sam'."]],
                  required: ["data"]),
@@ -2636,6 +2642,15 @@ struct ToolAgent: Sendable {
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             guard let spelled = NatoPhonetic.spell(text) else { return ("Nothing to spell.", []) }
             return (spelled, [])
+
+        case "vigenere":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            guard let key = arg("key"), !key.isEmpty else { return ("Missing 'key' (the keyword).", []) }
+            let decode = (arg("mode") ?? "encode").lowercased() == "decode"
+            guard let out = VigenereCipher.transform(text, key: key, decode: decode) else {
+                return ("The key must contain at least one letter.", [])
+            }
+            return (out, [])
 
         case "morse":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
