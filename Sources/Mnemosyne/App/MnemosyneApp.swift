@@ -12,7 +12,9 @@ struct MnemosyneApp: App {
         WindowGroup {
             ContentRoot()
         }
-        .windowStyle(.hiddenTitleBar)
+        // Use the NATIVE title bar (not .hiddenTitleBar): macOS then handles dragging,
+        // double-click-to-zoom, and the green/zoom button itself — no custom code.
+        .windowResizability(.contentMinSize)
         .defaultSize(width: 1200, height: 800)
         .commands {
             // Native menu items (discoverable in the menu bar) that drive the

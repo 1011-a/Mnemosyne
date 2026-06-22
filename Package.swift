@@ -9,9 +9,16 @@ let package = Package(
     products: [
         .executable(name: "Mnemosyne", targets: ["Mnemosyne"])
     ],
+    dependencies: [
+        // The top-level agent harness, consumed as a published package.
+        .package(url: "https://github.com/paean-ai/Fathom.git", from: "1.1.0")
+    ],
     targets: [
         .executableTarget(
             name: "Mnemosyne",
+            dependencies: [
+                .product(name: "Fathom", package: "Fathom")
+            ],
             path: "Sources/Mnemosyne",
             swiftSettings: [
                 .swiftLanguageMode(.v6)

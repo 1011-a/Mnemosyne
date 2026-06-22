@@ -4,29 +4,41 @@ import Speech
 /// On-device speech-to-text for audio files via the Speech framework.
 /// Best-effort: returns nil if unauthorized or the model isn't available, so
 /// ingestion degrades gracefully (the file is simply skipped).
+///
+/// Two guards keep one file from stalling ingest (the "stuck" symptom), since on-device
+/// recognition runs roughly in real time:
+///  • **Quiet bail** — if no words are heard within `quietBail` seconds, the file is
+///    almost certainly MUSIC or noise (no speech), so we cancel and skip it fast.
+///  • **Hard cap** — long genuine speech is cut off at `maxTimeout`, returning the
+///    transcript captured SO FAR (partial results) rather than losing the whole file.
 enum AudioTranscriber {
 
-    static func transcribe(_ url: URL) async -> String? {
+    static func transcribe(_ url: URL, quietBail: TimeInterval = 15, maxTimeout: TimeInterval = 90) async -> String? {
         let status = await authorize()
         guard status == .authorized else { return nil }
         guard let recognizer = SFSpeechRecognizer(), recognizer.isAvailable else { return nil }
 
         let request = SFSpeechURLRecognitionRequest(url: url)
         request.requiresOnDeviceRecognition = true
-        request.shouldReportPartialResults = false
+        request.shouldReportPartialResults = true   // so we can keep best-so-far on timeout
 
         return await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
-            // Hold the recognizer alive for the duration of the task.
             let holder = TaskHolder()
+            holder.resume = { cont.resume(returning: $0) }
             holder.task = recognizer.recognitionTask(with: request) { result, error in
-                if error != nil {
-                    holder.finish { cont.resume(returning: nil) }
-                    return
-                }
-                if let result, result.isFinal {
-                    let text = result.bestTranscription.formattedString
-                    holder.finish { cont.resume(returning: text.isEmpty ? nil : text) }
-                }
+                if let result { holder.update(result.bestTranscription.formattedString) }
+                if error != nil { holder.finishBest(); return }
+                if let result, result.isFinal { holder.finishBest() }
+            }
+            // Quiet bail: nothing heard yet ⇒ probably music ⇒ skip fast.
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(quietBail * 1_000_000_000))
+                holder.bailIfQuiet()
+            }
+            // Hard cap: keep what we transcribed so far, then move on.
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(maxTimeout * 1_000_000_000))
+                holder.finishBest()
             }
         }
     }
@@ -37,16 +49,37 @@ enum AudioTranscriber {
         }
     }
 
-    /// Serializes the single resume and retains the recognition task.
+    /// Resumes the continuation exactly once — from the recognizer (final/error), the
+    /// quiet-bail timer, or the hard cap — keeping the best partial transcript and
+    /// cancelling the recognition task on the way out.
     private final class TaskHolder: @unchecked Sendable {
         var task: SFSpeechRecognitionTask?
+        var resume: ((String?) -> Void)?
+        private var best = ""
         private var done = false
         private let lock = NSLock()
-        func finish(_ resume: () -> Void) {
+
+        func update(_ s: String) {
+            lock.lock(); if s.count > best.count { best = s }; lock.unlock()
+        }
+        /// Finish with the best transcript captured so far (nil if nothing usable).
+        func finishBest() {
+            lock.lock(); let b = best; lock.unlock()
+            let trimmed = b.trimmingCharacters(in: .whitespacesAndNewlines)
+            finish(trimmed.isEmpty ? nil : trimmed)
+        }
+        /// Skip the file if no speech has been heard yet (likely music).
+        func bailIfQuiet() {
+            lock.lock(); let empty = best.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty; lock.unlock()
+            if empty { finish(nil) }
+        }
+        private func finish(_ value: String?) {
             lock.lock(); defer { lock.unlock() }
             guard !done else { return }
             done = true
-            resume()
+            task?.cancel()
+            resume?(value)
+            resume = nil
         }
     }
 }

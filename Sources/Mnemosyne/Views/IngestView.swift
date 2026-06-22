@@ -1,12 +1,27 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Point Mnemosyne at a folder and watch it absorb everything inside.
 struct IngestView: View {
     let services: Services
     @Bindable var progress: IngestProgress
+    /// Jump to Ask and run a query (suggested from what was ingested).
+    var onAsk: (String) -> Void = { _ in }
     @State private var dropTargeted = false
     @State private var ollamaStatus: OllamaStatus = .unknown
+    @State private var suggestions: [Suggestion] = []
+    /// Throttle state for live suggestion refresh while files are landing.
+    @State private var suggestionBucket = -1
+    @State private var refreshingSuggestions = false
+    /// Selected Live-activity scene (persisted in settings).
+    @State private var activityTheme: LiveActivityTheme = .pixelCity
+    /// Bumped when the custom backdrop image changes, to force a refresh.
+    @State private var activityImageVersion = 0
+    /// Drives the SwiftUI `.fileImporter` for picking a backdrop image. Using the native
+    /// file importer instead of a hand-rolled `NSOpenPanel` — the latter proved unreliable in
+    /// this bundle (hung with `begin`, crashed with `runModal`).
+    @State private var showingImagePicker = false
 
     var body: some View {
         ScrollView {
@@ -58,10 +73,72 @@ struct IngestView: View {
                         .frame(width: 7, height: 7)
                     Text("Live activity").font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                     Spacer()
+                    // Theme selector — choose the Live-activity scene.
+                    Menu {
+                        ForEach(LiveActivityTheme.allCases) { theme in
+                            Button {
+                                activityTheme = theme
+                                services.settings.liveActivityTheme = theme
+                                // Choosing Custom Image with none set yet → prompt right away.
+                                if theme == .customImage, services.settings.liveActivityImagePath.isEmpty {
+                                    showingImagePicker = true
+                                }
+                            } label: {
+                                Label(theme.label, systemImage: activityTheme == theme ? "checkmark" : theme.icon)
+                            }
+                        }
+                        if activityTheme == .customImage {
+                            Divider()
+                            Button { showingImagePicker = true } label: { Label("Choose image…", systemImage: "photo") }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: activityTheme.icon).font(.system(size: 10))
+                            Text(activityTheme.label).font(DS.Typo.caption)
+                            Image(systemName: "chevron.down").font(.system(size: 8))
+                        }
+                        .foregroundStyle(DS.ColorToken.textSecondary)
+                    }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .help("Choose the live-activity scene")
                     Text(progress.isRunning ? "building…" : "idle").font(DS.Typo.mono)
                         .foregroundStyle(progress.isRunning ? DS.ColorToken.success : DS.ColorToken.textTertiary)
                 }
-                PixelCityView(progress: progress)
+                switch activityTheme {
+                case .pixelCity: PixelCityView(progress: progress)
+                case .starrySky: StarrySkyView(progress: progress)
+                case .customImage:
+                    CustomImageActivityView(progress: progress,
+                                            imagePath: services.settings.liveActivityImagePath,
+                                            onChoose: { showingImagePicker = true })
+                        .id(activityImageVersion)
+                }
+                // Streaming console of what ingest is doing right now — shown under every
+                // scene so a slow step (audio transcription, OCR) visibly scrolls instead of
+                // looking frozen.
+                IngestLogConsole(progress: progress)
+            }
+
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: DS.Space.x3) {
+                    Text(progress.isRunning ? "EMERGING IDEAS" : "NOW TRY ASKING")
+                        .font(DS.Typo.caption).tracking(1)
+                        .foregroundStyle(progress.isRunning ? DS.ColorToken.iris : DS.ColorToken.textTertiary)
+                        .animation(DS.Motion.snappy, value: progress.isRunning)
+                    FlowLayout(spacing: DS.Space.x2) {
+                        ForEach(suggestions) { s in
+                            Button { onAsk(s.query) } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: s.icon).font(.system(size: 11)).foregroundStyle(DS.ColorToken.iris)
+                                    Text(s.title).font(DS.Typo.callout).foregroundStyle(DS.ColorToken.textSecondary)
+                                }
+                                .padding(.horizontal, DS.Space.x4).padding(.vertical, DS.Space.x2)
+                                .overlay(Capsule().strokeBorder(DS.ColorToken.borderDefault, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain).help(s.query)
+                        }
+                    }
+                }
             }
         }
         .padding(DS.Space.x8)
@@ -87,11 +164,39 @@ struct IngestView: View {
         // Keep the persisted "in knowledge base" count fresh: on open, and each
         // time a run completes (so it climbs as files finish indexing).
         .task {
+            activityTheme = services.settings.liveActivityTheme
             await services.refreshLibraryCount()
             ollamaStatus = await services.refreshOllamaStatus()
+            suggestions = await SuggestionEngine.suggestions(from: services.store, limit: 4)
         }
         .onChange(of: progress.phase) { _, phase in
-            if phase == .done { Task { await services.refreshLibraryCount() } }
+            if phase == .done {
+                Task {
+                    await services.refreshLibraryCount()
+                    suggestions = await SuggestionEngine.suggestions(from: services.store, limit: 4)
+                }
+            }
+        }
+        // LIVE: as files land, refresh the chips when the added-count crosses a new
+        // bucket — so ideas emerge mid-ingest, throttled to avoid per-file churn.
+        .onChange(of: progress.added) { _, added in
+            guard SuggestionEngine.shouldRefreshLive(added: added, lastBucket: suggestionBucket,
+                                                     running: progress.isRunning), !refreshingSuggestions
+            else { return }
+            suggestionBucket = SuggestionEngine.liveBucket(added: added)
+            refreshingSuggestions = true
+            Task {
+                let fresh = await SuggestionEngine.suggestions(from: services.store, limit: 4)
+                await MainActor.run {
+                    withAnimation(DS.Motion.snappy) { suggestions = fresh }
+                    refreshingSuggestions = false
+                }
+            }
+        }
+        .fileImporter(isPresented: $showingImagePicker,
+                      allowedContentTypes: [.image],
+                      allowsMultipleSelection: false) { result in
+            handlePickedImage(result)
         }
     }
 
@@ -167,6 +272,29 @@ struct IngestView: View {
         if panel.runModal() == .OK, let url = panel.url {
             services.ingest(folder: url)
         }
+    }
+
+    /// Handle the backdrop image picked via SwiftUI's native `.fileImporter`. Copies it into
+    /// Application Support (so it persists even if the original moves) and switches to the theme.
+    /// Uses the native importer rather than a hand-rolled `NSOpenPanel`, which proved unreliable
+    /// in this bundle (hung with `begin`, crashed with `runModal`).
+    private func handlePickedImage(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result, let src = urls.first else { return }
+        // User-selected URLs are security-scoped; bracket the read access.
+        let scoped = src.startAccessingSecurityScopedResource()
+        defer { if scoped { src.stopAccessingSecurityScopedResource() } }
+        let fm = FileManager.default
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Mnemosyne")
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let ext = src.pathExtension.isEmpty ? "png" : src.pathExtension
+        let dest = URL(fileURLWithPath: dir).appendingPathComponent("activity-bg.\(ext)")
+        try? fm.removeItem(at: dest)
+        // Copy via Data so it works whether or not the source stays accessible.
+        guard let data = try? Data(contentsOf: src), (try? data.write(to: dest)) != nil else { return }
+        services.settings.liveActivityImagePath = dest.path
+        services.settings.liveActivityTheme = .customImage
+        activityTheme = .customImage
+        activityImageVersion += 1
     }
 
     private func chooseBookmarks() {

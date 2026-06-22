@@ -48,4 +48,74 @@ final class VisionEngineTests: XCTestCase {
         XCTAssertTrue(VisionEngine.claudeCode.usesExternalCLI)
         XCTAssertTrue(VisionEngine.codex.usesExternalCLI)
     }
+
+    func testBuildEngineDefaultsToDeepSeekAndPersists() {
+        let d = freshDefaults()
+        XCTAssertEqual(SettingsStore(defaults: d).buildEngine, .deepseek, "DeepSeek-native is the default")
+        SettingsStore(defaults: d).buildEngine = .codex
+        XCTAssertEqual(SettingsStore(defaults: d).buildEngine, .codex)
+        d.set("nonsense", forKey: "mnemosyne.buildEngine")
+        XCTAssertEqual(SettingsStore(defaults: d).buildEngine, .deepseek, "unknown value falls back to DeepSeek")
+    }
+
+    func testContextBudgetIsAlwaysMaxQuality() {
+        // No user knob: the agent always uses the full 1M-token window for best quality.
+        let d = freshDefaults()
+        XCTAssertEqual(SettingsStore(defaults: d).contextBudget, SettingsStore.maxContextBudget)
+        XCTAssertEqual(SettingsStore.maxContextBudget, 1_000_000)
+    }
+
+    // MARK: ingest auto-fallback ordering
+
+    func testNormalizedOrderDedupesAndNeverEmpty() {
+        XCTAssertEqual(VisionEngine.normalizedOrder([.gemma, .claudeCode, .gemma, .codex, .claudeCode]),
+                       [.gemma, .claudeCode, .codex], "duplicates dropped, first position kept")
+        XCTAssertEqual(VisionEngine.normalizedOrder([]), [.gemma], "empty defaults to the safe local engine")
+        XCTAssertEqual(VisionEngine.normalizedOrder([.codex, .gemma]), [.codex, .gemma], "order preserved")
+    }
+
+    func testEncodeDecodeRoundTrips() {
+        let order: [VisionEngine] = [.claudeCode, .gemma]
+        let encoded = VisionEngine.encodeOrder(order)
+        XCTAssertEqual(encoded, "claudeCode,gemma")
+        XCTAssertEqual(VisionEngine.decodeOrder(encoded), order)
+        // Empty / garbage → [] so callers can supply their own default.
+        XCTAssertTrue(VisionEngine.decodeOrder("").isEmpty)
+        XCTAssertTrue(VisionEngine.decodeOrder("nonsense,more-nonsense").isEmpty)
+        XCTAssertEqual(VisionEngine.decodeOrder("gemma,gemma,codex"), [.gemma, .codex], "decode also dedupes")
+    }
+
+    func testVisionEngineOrderPersistsAndSyncsPrimary() {
+        let d = freshDefaults()
+        let a = SettingsStore(defaults: d)
+        a.visionEngineOrder = [.claudeCode, .gemma]
+        let b = SettingsStore(defaults: d)
+        XCTAssertEqual(b.visionEngineOrder, [.claudeCode, .gemma], "ordered preference round-trips")
+        XCTAssertEqual(b.visionEngine, .claudeCode, "legacy primary stays in sync with the first entry")
+    }
+
+    func testVisionEngineOrderFallsBackToLegacySingleEngine() {
+        // A user upgrading in place has only the old single-engine key set.
+        let d = freshDefaults()
+        d.set("codex", forKey: "mnemosyne.visionEngine")
+        let settings = SettingsStore(defaults: d)
+        XCTAssertEqual(settings.visionEngineOrder, [.codex], "derives the order from the legacy setting")
+    }
+
+    func testVisionEngineOrderStoresEnabledSubset() {
+        // Selection: the user enables only Gemma + Claude (Codex disabled) — the order
+        // persists exactly that subset, in priority order, and never pads to all engines.
+        let d = freshDefaults()
+        let a = SettingsStore(defaults: d)
+        a.visionEngineOrder = [.gemma, .claudeCode]
+        XCTAssertEqual(SettingsStore(defaults: d).visionEngineOrder, [.gemma, .claudeCode],
+                       "only the enabled engines are stored, in order")
+    }
+
+    func testBuildEngineExternalCliClassification() {
+        XCTAssertFalse(BuildEngine.deepseek.usesExternalCLI, "DeepSeek is native — no CLI")
+        XCTAssertTrue(BuildEngine.claude.usesExternalCLI)
+        XCTAssertTrue(BuildEngine.codex.usesExternalCLI)
+        for e in BuildEngine.allCases { XCTAssertFalse(e.label.isEmpty); XCTAssertFalse(e.detail.isEmpty) }
+    }
 }

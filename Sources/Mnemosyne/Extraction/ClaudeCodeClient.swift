@@ -69,42 +69,49 @@ struct ClaudeCodeClient: Sendable {
                          timeout: timeout, purpose: "document \(URL(fileURLWithPath: path).lastPathComponent)")
     }
 
+    /// Developer-agent "create" capability: run the claude CLI as a BUILD AGENT in
+    /// `workdir` to produce a deliverable (report, visualization, mini-app, code),
+    /// grounded in `context` from the user's files. Only Read/Edit/Write are allowed
+    /// (no shell) and writes land in `workdir`. Returns the agent's stdout, or nil.
+    static func createArtifact(task: String, context: String, workdir: String,
+                               timeout: TimeInterval = 600) async -> String? {
+        guard let bin = binaryPath else { return nil }
+        let prompt = """
+        You are a BUILD AGENT working in the current directory. Produce this deliverable, writing ALL \
+        files into the current directory:
+
+        \(task)
+
+        Ground it ONLY in this CONTEXT from the user's knowledge base — do not invent facts; cite source \
+        filenames where relevant:
+        \(context)
+
+        Make it polished and self-contained (inline CSS/JS for any HTML; no external assets). When finished, \
+        print on the LAST line exactly: ARTIFACT_FILES: <comma-separated names of the files you created>.
+        """
+        return await run(bin: bin,
+                         args: ["-p", prompt, "--allowedTools", "Read Edit Write",
+                                "--permission-mode", "acceptEdits", "--model", ingestModel],
+                         timeout: timeout, purpose: "create", cwd: workdir)
+    }
+
     // MARK: - Process plumbing
 
-    private static func run(bin: String, args: [String], timeout: TimeInterval, purpose: String) async -> String? {
+    private static func run(bin: String, args: [String], timeout: TimeInterval, purpose: String,
+                            cwd: String? = nil) async -> String? {
         IngestDebugLog.write("CLAUDE spawn purpose=\(purpose) bin=\(bin)")
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: bin)
-        proc.arguments = args
-        let outPipe = Pipe()
-        proc.standardOutput = outPipe
-        proc.standardError = FileHandle.nullDevice
-        proc.standardInput = FileHandle.nullDevice          // avoid claude's 3s stdin wait
         // Ensure claude (a Node app) can find node/itself even under the .app's
         // stripped PATH; keep the user's HOME so it finds ~/.claude credentials.
         var env = ProcessInfo.processInfo.environment
         let home = NSHomeDirectory()
         let extra = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
         env["PATH"] = (extra + [env["PATH"] ?? ""]).joined(separator: ":")
-        proc.environment = env
 
-        do { try proc.run() } catch { return nil }
-
-        let watchdog = Task {
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            if proc.isRunning { proc.terminate() }
-        }
-        let data: Data = await withCheckedContinuation { cont in
-            DispatchQueue.global(qos: .utility).async {
-                let d = outPipe.fileHandleForReading.readDataToEndOfFile()
-                proc.waitUntilExit()
-                cont.resume(returning: d)
-            }
-        }
-        watchdog.cancel()
-        IngestDebugLog.write("CLAUDE exit status=\(proc.terminationStatus) purpose=\(purpose)")
-        guard proc.terminationStatus == 0 else { return nil }
-        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Robust timeout (SIGTERM → SIGKILL) so a wedged claude can never block ingest.
+        let r = await ProcessRunner.run(bin: bin, args: args, timeout: timeout, cwd: cwd, env: env)
+        IngestDebugLog.write("CLAUDE exit status=\(r.status) timedOut=\(r.timedOut) purpose=\(purpose)")
+        guard r.status == 0 else { return nil }
+        let text = String(decoding: r.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : text
     }
 

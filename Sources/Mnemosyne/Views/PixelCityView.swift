@@ -114,7 +114,7 @@ struct PixelCityView: View {
                 PixelFont.draw(&ctx, shown + cursor, x: 2, y: gh - 6, s: s, color: winOn.opacity(0.95))
             }
         }
-        .frame(height: 250)
+        .frame(height: 320)
         .background(sky1)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)

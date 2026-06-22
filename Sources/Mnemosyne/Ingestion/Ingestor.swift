@@ -20,12 +20,17 @@ actor Ingestor {
     }
 
     private func currentExtractor() async -> ContentExtractor {
-        let engine = settings.visionEngine
+        let order = settings.visionEngineOrder
+        let primary = order.first ?? .gemma
         var multimodal = settings.multimodal
-        if multimodal, engine == .gemma {
-            multimodal = await ollama.status().isReady
+        if multimodal, primary == .gemma {
+            // If Gemma is the primary but isn't reachable, stay multimodal as long as a
+            // fallback engine is configured — the extractor will switch to it per file.
+            let gemmaReady = await ollama.status().isReady
+            multimodal = gemmaReady || order.contains { $0 != .gemma }
         }
-        return ContentExtractor(ollama: ollama, multimodal: multimodal, visionEngine: engine)
+        return ContentExtractor(ollama: ollama, multimodal: multimodal,
+                                visionEngine: primary, engineOrder: order)
     }
 
     /// Human-readable label for the (often slow) extraction step, shown live so a

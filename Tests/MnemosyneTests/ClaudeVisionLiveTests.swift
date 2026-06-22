@@ -36,6 +36,21 @@ final class ClaudeVisionLiveTests: XCTestCase {
         XCTAssertGreaterThan(text.count, 40, "Claude should extract substantial PDF content")
     }
 
+    /// The developer-agent "create" capability actually writes a deliverable file.
+    func testClaudeCreateArtifactWritesFiles() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["MNEMO_LIVE_CLAUDE"] == "1",
+                          "set MNEMO_LIVE_CLAUDE=1 to run this quota-spending live test")
+        try XCTSkipUnless(ClaudeCodeClient.isAvailable, "claude CLI not found")
+        let dir = try TestSupport.tempDirectory(prefix: "Artifact")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = await ClaudeCodeClient.createArtifact(
+            task: "Create a single file report.html: a minimal valid HTML page titled 'Test' with an <h1>.",
+            context: "(no sources)", workdir: dir.path, timeout: 180)
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.filter { !$0.hasPrefix(".") } ?? []
+        print("ARTIFACT_FILES>>> \(files)")
+        XCTAssertFalse(files.isEmpty, "build agent should write at least one file")
+    }
+
     /// End-to-end: the Ingestor runs Claude vision calls CONCURRENTLY, so a batch of
     /// images finishes far faster than serial (proves the speedup pipeline works).
     func testClaudeIngestRunsConcurrently() async throws {

@@ -82,8 +82,16 @@ final class IngestProgress {
     }
 
     /// Report mid-work activity on a file (slow steps like Gemma / OCR / embedding)
-    /// so the UI shows live movement instead of a frozen filename.
-    func note(_ file: String, _ what: String) { currentFile = file; activity = what }
+    /// so the UI shows live movement instead of a frozen filename. Logs one console
+    /// line each time a NEW file starts (so a slow step like audio transcription shows
+    /// the file it's on — proof it's working, not stuck), but stays quiet for the many
+    /// in-file updates (embedding 200/1200 …) so the console stays readable.
+    func note(_ file: String, _ what: String) {
+        if !file.isEmpty, file != currentFile {
+            appendLog("▸", "\(what)  \(file)", .work)
+        }
+        currentFile = file; activity = what
+    }
 
     func tickAdded(_ title: String) {
         processed += 1; added += 1; currentFile = title; activity = "Indexed"

@@ -15,13 +15,16 @@ struct ChatMessage: Codable, Sendable, Identifiable {
     var model: String = ""
     /// The reasoner's thinking trace, if any (deepseek-reasoner only).
     var reasoning: String = ""
+    /// A short note about HOW the agentic turn ended (e.g. hit the step limit) —
+    /// in-memory only, shown subtly under the answer. Empty for clean finishes.
+    var agentNote: String = ""
 
     enum CodingKeys: String, CodingKey { case role, content }
 
     init(role: ChatMessageRole, content: String, citations: [Citation] = [],
-         model: String = "", reasoning: String = "") {
+         model: String = "", reasoning: String = "", agentNote: String = "") {
         self.role = role; self.content = content; self.citations = citations
-        self.model = model; self.reasoning = reasoning
+        self.model = model; self.reasoning = reasoning; self.agentNote = agentNote
     }
 }
 

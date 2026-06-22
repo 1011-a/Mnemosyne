@@ -92,6 +92,22 @@ actor KnowledgeStore {
             kinds TEXT NOT NULL, tag TEXT, created_at REAL NOT NULL
         );
         """)
+        // Incremental conversation-compaction summaries: one row per thread covering
+        // messages[0..<boundary], so long threads don't re-summarize from scratch.
+        try execRaw(db, """
+        CREATE TABLE IF NOT EXISTS thread_summaries (
+            thread_id TEXT PRIMARY KEY, boundary INTEGER NOT NULL, summary TEXT NOT NULL,
+            updated_at REAL NOT NULL,
+            FOREIGN KEY(thread_id) REFERENCES threads(id) ON DELETE CASCADE
+        );
+        """)
+        // Long-term memory: facts the user pins so the agent ALWAYS recalls them
+        // across every conversation (injected into context, never compacted).
+        try execRaw(db, """
+        CREATE TABLE IF NOT EXISTS pinned_facts (
+            id TEXT PRIMARY KEY, fact TEXT NOT NULL, created_at REAL NOT NULL
+        );
+        """)
     }
 
     // MARK: Saved searches (smart folders)
@@ -351,6 +367,56 @@ actor KnowledgeStore {
             }
         }
         return out
+    }
+
+    /// Persist a thread's compaction summary covering `messages[0..<boundary]`.
+    func saveThreadSummary(threadID: String, boundary: Int, summary: String, now: Date = Date()) throws {
+        try run("INSERT OR REPLACE INTO thread_summaries (thread_id,boundary,summary,updated_at) VALUES (?,?,?,?);") { st in
+            bindText(st, 1, threadID); sqlite3_bind_int(st, 2, Int32(boundary))
+            bindText(st, 3, summary); sqlite3_bind_double(st, 4, now.timeIntervalSince1970)
+            try step(st)
+        }
+    }
+
+    /// Drop a thread's compaction summary (so the next turn recompacts from scratch).
+    func deleteThreadSummary(threadID: String) throws {
+        try run("DELETE FROM thread_summaries WHERE thread_id = ?;") { st in bindText(st, 1, threadID); try step(st) }
+    }
+
+    // MARK: Pinned facts (long-term memory)
+
+    /// Pin a fact to long-term memory (deduped by text, case-insensitive).
+    func addPinnedFact(_ fact: String, idSeed: String = UUID().uuidString, now: Date = Date()) throws {
+        let f = fact.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !f.isEmpty else { return }
+        if try allPinnedFacts().contains(where: { $0.fact.lowercased() == f.lowercased() }) { return }
+        try run("INSERT INTO pinned_facts (id,fact,created_at) VALUES (?,?,?);") { st in
+            bindText(st, 1, idSeed); bindText(st, 2, f); sqlite3_bind_double(st, 3, now.timeIntervalSince1970)
+            try step(st)
+        }
+    }
+
+    /// All pinned facts, oldest first.
+    func allPinnedFacts() throws -> [(id: String, fact: String)] {
+        var out: [(id: String, fact: String)] = []
+        try run("SELECT id,fact FROM pinned_facts ORDER BY created_at;") { st in
+            while sqlite3_step(st) == SQLITE_ROW { out.append((Self.col(st, 0), Self.col(st, 1))) }
+        }
+        return out
+    }
+
+    func removePinnedFact(id: String) throws {
+        try run("DELETE FROM pinned_facts WHERE id = ?;") { st in bindText(st, 1, id); try step(st) }
+    }
+
+    /// The stored compaction summary for a thread, or nil if none yet.
+    func loadThreadSummary(threadID: String) throws -> (boundary: Int, summary: String)? {
+        var result: (Int, String)?
+        try run("SELECT boundary,summary FROM thread_summaries WHERE thread_id = ?;") { st in
+            bindText(st, 1, threadID)
+            if sqlite3_step(st) == SQLITE_ROW { result = (Int(sqlite3_column_int(st, 0)), Self.col(st, 1)) }
+        }
+        return result
     }
 
     // MARK: Writes
@@ -640,7 +706,7 @@ actor KnowledgeStore {
 
     /// Distinct meaningful lowercase terms from the query (len ≥ 2, no stopwords).
     /// Uses `NLTokenizer`, which segments CJK (Chinese/Japanese/Korean) into words —
-    /// so "奕琪的所有相关内容" yields {奕琪, 所有, 相关, 内容} instead of one un-matchable
+    /// so "彩虹猫的相关内容" yields {彩虹, 虹猫, 相关, 内容} instead of one un-matchable
     /// blob (the bug that made non-English searches return nothing).
     static func keywordTerms(_ query: String) -> Set<String> {
         var terms = Set<String>()
@@ -654,8 +720,8 @@ actor KnowledgeStore {
                !t.unicodeScalars.contains(where: isCJK) { terms.insert(t) }
             return true
         }
-        // CJK → character BIGRAMS. Word segmentation (and proper names like 奕琪)
-        // are unreliable, but a bigram like 奕琪 robustly matches the document.
+        // CJK → character BIGRAMS. Word segmentation (and proper names)
+        // are unreliable, but a CJK bigram robustly matches the document.
         var run: [Character] = []
         func flush() {
             if run.count >= 2 {
@@ -688,7 +754,7 @@ actor KnowledgeStore {
     }
 
     /// IDF-weighted keyword score in 0…1: a chunk gets credit for the query terms it
-    /// contains, weighted so DISTINCTIVE terms (a rare name like 奕琪) count far more
+    /// contains, weighted so DISTINCTIVE terms (a rare proper noun) count far more
     /// than common words (内容, "report"). Without this, common words drown out the
     /// one term that actually identifies the document.
     static func keywordScore(text: String, idf: [String: Float]) -> Float {
