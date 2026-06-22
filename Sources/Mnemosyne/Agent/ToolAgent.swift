@@ -186,6 +186,7 @@ struct ToolAgent: Sendable {
     • find_in_item(item, query) — grep one file for a phrase; returns matching lines with line numbers.
     • extract_quotes(item) — pull quoted passages (straight + smart quotes) from a file.
     • extract_ips(item) — pull valid IPv4 addresses from a file (octets validated).
+    • extract_domains(item) — pull unique domains from URLs/emails in a file.
     • extract_times(item) — pull times of day (3:30 PM, 09:00, 12pm) from a file.
     • extract_percentages(item) — pull percentages and summarize (count, avg, min, max).
     • read_frontmatter(item) — parse a note's leading '---' YAML metadata block into fields.
@@ -336,6 +337,8 @@ struct ToolAgent: Sendable {
             tool("extract_quotes", "Pull quoted passages from a file — straight (\"…\") and smart (curly) quotes. Use to find citations or highlighted lines in a note.",
                  ["item": item], required: ["item"]),
             tool("extract_ips", "Pull valid IPv4 addresses from a file (logs, configs) — each octet validated 0–255. Use for log analysis.",
+                 ["item": item], required: ["item"]),
+            tool("extract_domains", "Pull the unique domain names from a file — hosts from URLs and domains from email addresses. Use to see which sites appear in a note.",
                  ["item": item], required: ["item"]),
             tool("extract_times", "Pull times of day from a file — '3:30 PM', '09:00', '12pm'. Validated hours/minutes. Use to find schedule/meeting times.",
                  ["item": item], required: ["item"]),
@@ -1897,6 +1900,17 @@ struct ToolAgent: Sendable {
                 return ("No IPv4 addresses found in '\(it.title)'.", [])
             }
             return ("IPs in '\(it.title)':\n\(summary)", [])
+
+        case "extract_domains":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Finding domains in \(it.title)…")
+            let full = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let summary = DomainExtractor.summary(full) else {
+                return ("No domains (URLs/emails) found in '\(it.title)'.", [])
+            }
+            return ("Domains in '\(it.title)':\n\(summary)", [])
 
         case "extract_times":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
