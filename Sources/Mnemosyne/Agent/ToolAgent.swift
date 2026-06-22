@@ -274,6 +274,7 @@ struct ToolAgent: Sendable {
     • number_stats(data) — count/sum/mean/median/min/max/range/stdev over a list of numbers.
     • sparkline(data) — compact one-line trend (▁▂▃▄▅▆▇█) from a number series.
     • quartiles(data) — Q1/median/Q3/IQR of a list of numbers.
+    • outliers(data, k) — flag outliers in a number list via Tukey's IQR fences.
     • histogram(data, bins) — text histogram of a number list's distribution.
     • tally(data) — count occurrences of each distinct value in a list (GROUP BY).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
@@ -654,6 +655,10 @@ struct ToolAgent: Sendable {
             tool("histogram", "Render a text histogram of a number list — buckets the values into bins and shows the distribution. Set 'bins' (default 10). Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
                   "bins": ["type": "integer", "description": "Number of bins (default 10)."]],
+                 required: ["data"]),
+            tool("outliers", "Detect outliers in a list of numbers using Tukey's IQR fences — flags values far below Q1 or above Q3. Set 'k' (default 1.5; use 3 for extreme-only). Needs at least 4 values. Pass values separated by commas or spaces.",
+                 ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
+                  "k": ["type": "string", "description": "Fence multiplier (default 1.5; 3 = extreme outliers only)."]],
                  required: ["data"]),
             tool("tally", "Count how often each distinct value appears in a list (a GROUP BY) — statuses, tags, names. Pass values one per line (or comma-separated). Returns a frequency table; pair with bar_chart to visualize it.",
                  ["data": ["type": "string", "description": "Values one per line or comma-separated, e.g. 'open\\nopen\\nclosed'."]],
@@ -2923,6 +2928,20 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse any numbers from the data.", [])
             }
             return ("```\n\(Histogram.chart(bins))\n```", [])
+
+        case "outliers":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
+            let k = Swift.max(Double(arg("k") ?? "") ?? 1.5, 0.1)
+            guard let r = Outliers.detect(NumberStats.parse(data), k: k) else {
+                return ("Need at least 4 numbers to detect outliers.", [])
+            }
+            let f = Quartiles.fmt
+            let outs = r.low + r.high
+            if outs.isEmpty {
+                return ("No outliers (k=\(f(k)) fences \(f(r.lowerFence))…\(f(r.upperFence))).", [])
+            }
+            let list = outs.map(f).joined(separator: ", ")
+            return ("\(outs.count) outlier\(outs.count == 1 ? "" : "s"): \(list) (outside \(f(r.lowerFence))…\(f(r.upperFence)), k=\(f(k))).", [])
 
         case "tally":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of values).", []) }
