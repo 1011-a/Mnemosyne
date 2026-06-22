@@ -264,6 +264,7 @@ struct ToolAgent: Sendable {
     • temperature(value, from, to) — convert between °C, °F, and K.
     • color(value) — convert hex ↔ RGB (#FF5733 ↔ rgb(255, 87, 51)).
     • luhn(value) — validate a number's Luhn checksum (cards, IMEIs, IDs).
+    • password_strength(password) — entropy-bits + strength label, on-device.
     • validate_email(email) — check whether a string is a well-formed email address.
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
@@ -624,6 +625,9 @@ struct ToolAgent: Sendable {
             tool("luhn", "Check whether a number passes the Luhn checksum (used by credit-card numbers, IMEIs, and many IDs). Spaces and dashes are ignored.",
                  ["value": ["type": "string", "description": "The number to validate."]],
                  required: ["value"]),
+            tool("password_strength", "Estimate a password's strength on-device — entropy in bits plus a label (very weak…very strong), based on length and the character classes used. Never sent anywhere.",
+                 ["password": ["type": "string", "description": "The password to evaluate."]],
+                 required: ["password"]),
             tool("validate_email", "Check whether a string is a well-formed email address (local@domain.tld). Distinct from extract_emails, which finds them in text.",
                  ["email": ["type": "string", "description": "The email address to validate."]],
                  required: ["email"]),
@@ -2852,6 +2856,11 @@ struct ToolAgent: Sendable {
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
             let valid = Luhn.isValid(value)
             return ("\(value) is \(valid ? "valid" : "invalid") (Luhn checksum).", [])
+
+        case "password_strength":
+            guard let pw = arg("password"), !pw.isEmpty else { return ("Missing 'password'.", []) }
+            guard let r = PasswordStrength.evaluate(pw) else { return ("Nothing to evaluate.", []) }
+            return ("\(Int(r.bits.rounded())) bits of entropy — \(r.label) (\(pw.count) chars, pool \(r.poolSize)).", [])
 
         case "validate_email":
             guard let email = arg("email"), !email.isEmpty else { return ("Missing 'email'.", []) }
