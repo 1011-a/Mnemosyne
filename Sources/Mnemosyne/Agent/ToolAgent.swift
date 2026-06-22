@@ -226,6 +226,7 @@ struct ToolAgent: Sendable {
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
     • headline_case(text) — AP/Chicago title case (minor words stay lowercase).
+    • acronym(phrase, skip_minor) — make an acronym from a phrase (Portable Document Format → PDF).
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
@@ -455,6 +456,10 @@ struct ToolAgent: Sendable {
             tool("headline_case", "Title-case a headline AP/Chicago-style — major words capitalized, short articles/conjunctions/prepositions lowercased (unless first or last). E.g. 'the lord of the rings' → 'The Lord of the Rings'.",
                  ["text": ["type": "string", "description": "The headline/title to format."]],
                  required: ["text"]),
+            tool("acronym", "Make an acronym from a phrase — first letter of each word, uppercased. E.g. 'Portable Document Format' → 'PDF'. Set skip_minor=true to drop words like 'the', 'of'.",
+                 ["phrase": ["type": "string", "description": "The phrase to acronymize."],
+                  "skip_minor": ["type": "boolean", "description": "Skip minor words (the, of, and…). Default false."]],
+                 required: ["phrase"]),
             tool("word_frequency", "Count the most frequent content words in some text (stopwords filtered) — a quick topical fingerprint. Set 'top' to cap how many to return (default 10).",
                  ["text": ["type": "string", "description": "The text to analyze."],
                   "top": ["type": "integer", "description": "How many top words to return (default 10)."]],
@@ -2446,6 +2451,13 @@ struct ToolAgent: Sendable {
         case "headline_case":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             return (HeadlineCase.titleize(text), [])
+
+        case "acronym":
+            guard let phrase = arg("phrase"), !phrase.isEmpty else { return ("Missing 'phrase'.", []) }
+            let skipMinor = (arg("skip_minor") ?? "false").lowercased() == "true"
+            let acronym = AcronymMaker.make(phrase, skipMinor: skipMinor)
+            guard !acronym.isEmpty else { return ("No letters to acronymize in '\(phrase)'.", []) }
+            return ("\(phrase) → \(acronym)", [])
 
         case "word_frequency":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
