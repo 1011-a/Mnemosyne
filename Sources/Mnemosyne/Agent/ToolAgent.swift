@@ -191,6 +191,7 @@ struct ToolAgent: Sendable {
     • csv_sort(item, column, …) — sort a CSV/TSV by a column (text/numeric, reverse) and show as a table.
     • csv_select(item, columns) — pick/reorder CSV columns (SQL-style projection) and show as a table.
     • csv_group_by(item, group_by, aggregate, op) — SQL GROUP BY with count/sum/mean/min/max.
+    • csv_dedupe(item, by?) — remove duplicate rows (whole-row, or first per key column).
     • csv_to_json(item) — convert a CSV/TSV file into a JSON array of objects (header → keys).
     • csv_column_stats(item, column) — aggregate one column: numeric sum/mean/min/max, or top values.
     • csv_filter(item, where) — select rows by a predicate (status = open, amount >= 500, name contains da).
@@ -346,6 +347,9 @@ struct ToolAgent: Sendable {
                   "aggregate": ["type": "string", "description": "Numeric column to aggregate (not needed for count)."],
                   "op": ["type": "string", "enum": ["count", "sum", "mean", "min", "max"], "description": "Aggregation (default count)."]],
                  required: ["item", "group_by"]),
+            tool("csv_dedupe", "Remove duplicate rows from a CSV/TSV — exact whole-row duplicates by default, or keep the first row per 'by' column. Reports how many were removed and shows the result.",
+                 ["item": item, "by": ["type": "string", "description": "Optional column to dedupe by (keeps first per value). Omit for exact whole-row dedupe."]],
+                 required: ["item"]),
             tool("csv_to_json", "Convert a CSV/TSV file into a JSON array of objects (header row → keys; values stay strings). Use to reshape a spreadsheet for an API or further processing.",
                  ["item": item], required: ["item"]),
             tool("csv_column_stats", "Compute aggregate statistics for ONE column of a CSV/TSV file — numeric sum/mean/min/max when the column is numeric, otherwise the most frequent values. Use to answer 'total revenue?', 'most common status?'. Call inspect_csv first to see the column names.",
@@ -1967,6 +1971,24 @@ struct ToolAgent: Sendable {
             guard let table = MarkdownTable.tableFrom(clamped) else { return ("Couldn't render the grouped table.", []) }
             let note = grouped.count > maxRows + 1 ? "\n…(\(grouped.count - 1 - maxRows) more groups)" : ""
             return ("\(it.title) grouped by \(groupCol):\n\(table)\(note)", [])
+
+        case "csv_dedupe":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Deduping \(it.title)…")
+            let text = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            let delim = DelimitedParser.detectDelimiter(text)
+            let rows = DelimitedParser.parse(text, delimiter: delim)
+            guard let header = rows.first else { return ("'\(it.title)' has no rows.", []) }
+            guard let (kept, removed) = CSVDedupe.dedupe(header: header, rows: Array(rows.dropFirst()), keyColumn: arg("by")) else {
+                return ("Column '\(arg("by") ?? "")' not found in '\(it.title)'. Columns: \(header.joined(separator: ", ")).", [])
+            }
+            let maxRows = 30
+            let out = [header] + kept
+            guard let table = MarkdownTable.tableFrom(Array(out.prefix(maxRows + 1))) else { return ("Couldn't render the result.", []) }
+            let more = out.count > maxRows + 1 ? "\n…(\(out.count - 1 - maxRows) more rows)" : ""
+            return ("\(it.title) — removed \(removed) duplicate row(s), \(kept.count) remain:\n\(table)\(more)", [])
 
         case "csv_to_json":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
