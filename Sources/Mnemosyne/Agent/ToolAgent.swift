@@ -248,6 +248,7 @@ struct ToolAgent: Sendable {
     • extract_fields(text, fields) — pull named fields from text into a table (reliable force-JSON).
     • fill_in(prefix, suffix) — generate the missing middle between two anchors (DeepSeek FIM).
     • deep_reason(question) — answer a hard analytical question with the reasoner model (R1), step-by-step.
+    • confidence_check(question) — answer + a high/moderate/low confidence score from token logprobs.
     • text_similarity(a, b) — Jaccard word-overlap similarity of two texts (0–100%).
     • edit_distance(a, b) — Levenshtein edit distance + similarity % (typos, fuzzy matching).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
@@ -592,6 +593,9 @@ struct ToolAgent: Sendable {
                  required: ["prefix"]),
             tool("deep_reason", "Answer a HARD analytical question with DeepSeek's reasoner model (R1) — it thinks step-by-step before answering. Use for proofs, multi-step logic, trade-off analysis, debugging, or anything needing careful reasoning (not quick lookups). Returns the answer plus its reasoning.",
                  ["question": ["type": "string", "description": "The analytical question to reason through."]],
+                 required: ["question"]),
+            tool("confidence_check", "Answer a question AND report how confident the model is (from its token log-probabilities) — high/moderate/low with a percentage. Use when the user wants a reliability signal, e.g. 'how sure are you that…'.",
+                 ["question": ["type": "string", "description": "The question to answer with a confidence score."]],
                  required: ["question"]),
             tool("text_similarity", "Measure how similar two texts are — a Jaccard word-overlap ratio (0–100%). Use to gauge how alike two notes/passages are.",
                  ["a": ["type": "string", "description": "The first text."],
@@ -2890,6 +2894,18 @@ struct ToolAgent: Sendable {
                 out += "\n\n<details>\n<summary>Reasoning</summary>\n\n\(reasoning)\n\n</details>"
             }
             return (out, [])
+
+        case "confidence_check":
+            guard let question = arg("question"), !question.isEmpty else { return ("Missing 'question'.", []) }
+            guard let result = try? await deepSeek.answerWithConfidence([["role": "user", "content": question]]),
+                  !result.answer.isEmpty else {
+                return ("Couldn't get an answer right now.", [])
+            }
+            guard let conf = result.confidence else {
+                return ("\(result.answer)\n\n_(Confidence signal unavailable for this response.)_", [])
+            }
+            let (band, advice) = ConfidenceBand.describe(conf)
+            return ("\(result.answer)\n\n**Confidence: \(ConfidenceBand.percent(conf))% (\(band))** — \(advice).", [])
 
         case "extract_fields":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
