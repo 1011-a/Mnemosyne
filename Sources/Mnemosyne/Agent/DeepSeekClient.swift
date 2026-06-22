@@ -103,6 +103,18 @@ struct DeepSeekClient: Sendable {
         return parsed.choices.first?.message.content ?? ""
     }
 
+    /// Force a JSON response using the beta prefix feature: seed an assistant prefix of a ```json
+    /// fence and stop at the closing fence, so the model can only emit JSON. Then extract +
+    /// validate it. Returns the JSON string, or nil if the model produced nothing parseable.
+    /// Far more reliable than asking "reply with JSON" and hoping. See `JSONExtract`.
+    func completeJSON(prior: [[String: Any]], temperature: Double = 0.2) async throws -> String? {
+        let prefix = "```json\n"
+        let continuation = try await prefixComplete(prior: prior, prefix: prefix,
+                                                    temperature: temperature, stop: ["```"])
+        return JSONExtract.extractValid(from: continuation)
+            ?? JSONExtract.extractValid(from: prefix + continuation)
+    }
+
     /// POST a pre-serialized JSON body to the `/beta` chat-completions endpoint (where DeepSeek's
     /// prefix / FIM features live). Mirrors `rawChat`'s auth + error handling.
     func rawChatBeta(body: Data) async throws -> Data {
