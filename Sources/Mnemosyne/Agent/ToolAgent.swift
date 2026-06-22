@@ -217,6 +217,7 @@ struct ToolAgent: Sendable {
     • extract_definitions(item) — pull definition sentences (X means Y, HTTP stands for…) into a glossary.
     • extract_mentions(item) — pull #hashtags and @mentions with counts (ignores emails/headings).
     • parse_url(url) — break a URL into scheme/host/path/query params/fragment (decoded).
+    • jwt_decode(token) — decode a JWT's header + payload claims (no signature check).
     • slugify(text) — make a URL/filename-safe slug from a string (accents folded, punctuation collapsed).
     • hash_text(text) — SHA-256 fingerprint of text (checksums, dedup, identical-content checks).
     • base64(text, mode) — base64 encode/decode text (data URIs, tokens, snippets).
@@ -469,6 +470,9 @@ struct ToolAgent: Sendable {
             tool("parse_url", "Break a URL into its parts — scheme, host, path, decoded query parameters, and fragment. Use to inspect what a link (e.g. a tracking URL) actually contains.",
                  ["url": ["type": "string", "description": "The URL to parse, e.g. 'https://example.com/p?utm_source=x'."]],
                  required: ["url"]),
+            tool("jwt_decode", "Decode a JSON Web Token's header and payload (claims like issuer, subject, expiry, scopes) — base64url, no key needed. Does NOT verify the signature (that requires the secret); it's an inspector, not a validator.",
+                 ["token": ["type": "string", "description": "The JWT (header.payload.signature)."]],
+                 required: ["token"]),
             tool("slugify", "Turn a string into a URL/filename-safe slug — 'My Great Note!' → 'my-great-note'. Folds accents to ASCII and collapses punctuation. Use for anchors, filenames, or artifact names.",
                  ["text": ["type": "string", "description": "The text to slugify, e.g. a title."]],
                  required: ["text"]),
@@ -2648,6 +2652,15 @@ struct ToolAgent: Sendable {
                 return ("'\(url)' doesn't look like a valid URL.", [])
             }
             return ("URL parts:\n\(summary)", [])
+
+        case "jwt_decode":
+            guard let token = arg("token"), !token.isEmpty else { return ("Missing 'token'.", []) }
+            guard let decoded = JWTDecoder.decode(token) else {
+                return ("That doesn't look like a valid JWT (expected header.payload.signature, base64url).", [])
+            }
+            let header = JWTDecoder.prettify(decoded.header)
+            let payload = JWTDecoder.prettify(decoded.payload)
+            return ("Header:\n```json\n\(header)\n```\nPayload:\n```json\n\(payload)\n```\n_(Signature not verified.)_", [])
 
         case "slugify":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
