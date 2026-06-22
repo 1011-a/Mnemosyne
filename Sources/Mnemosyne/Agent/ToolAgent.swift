@@ -243,6 +243,7 @@ struct ToolAgent: Sendable {
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • word_diff(a, b) — word-level diff of two texts (added vs removed words).
+    • line_diff(a, b) — line-level LCS diff of two text blocks (unified +/- view).
     • text_similarity(a, b) — Jaccard word-overlap similarity of two texts (0–100%).
     • edit_distance(a, b) — Levenshtein edit distance + similarity % (typos, fuzzy matching).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
@@ -564,6 +565,10 @@ struct ToolAgent: Sendable {
             tool("word_diff", "Compare two texts at the WORD level — which words were added vs removed (case-insensitive). Complements the line-level diff tools.",
                  ["a": ["type": "string", "description": "The first text."],
                   "b": ["type": "string", "description": "The second text."]],
+                 required: ["a", "b"]),
+            tool("line_diff", "Line-level diff between two text blocks — a unified-style view (unchanged ' ', removed '-', added '+') using LCS matching. Use to compare two versions of a note, config, or list.",
+                 ["a": ["type": "string", "description": "The original text (one item per line)."],
+                  "b": ["type": "string", "description": "The new text to compare against A."]],
                  required: ["a", "b"]),
             tool("text_similarity", "Measure how similar two texts are — a Jaccard word-overlap ratio (0–100%). Use to gauge how alike two notes/passages are.",
                  ["a": ["type": "string", "description": "The first text."],
@@ -2806,6 +2811,12 @@ struct ToolAgent: Sendable {
         case "word_diff":
             guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
             return (WordDiff.summary(a, b), [])
+
+        case "line_diff":
+            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
+            let d = LineDiff.diff(a, b)
+            if d.added == 0 && d.removed == 0 { return ("No differences — the two texts are identical.", []) }
+            return ("\(d.added) added, \(d.removed) removed:\n```\n\(d.lines.joined(separator: "\n"))\n```", [])
 
         case "text_similarity":
             guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
