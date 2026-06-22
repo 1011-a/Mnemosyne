@@ -274,6 +274,7 @@ struct ToolAgent: Sendable {
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
     • file_size(value) — bytes ↔ human size (1500000 ↔ '1.5 MB'; '2GB' → bytes).
     • date_diff(from, to?) — days between two dates (to defaults to today): countdowns, "how long ago".
+    • weekday(date) — the day of the week a YYYY-MM-DD date falls on.
     • add_days(date, days) — date N days from a date (+ weekday); negative goes backward.
     • bar_chart(data) — render an ASCII bar chart from 'label: value' pairs to visualize numbers inline.
     • make_table(data) — format rows into an aligned markdown table (first row = header).
@@ -685,6 +686,9 @@ struct ToolAgent: Sendable {
             tool("file_size", "Convert between a byte count and a human-readable size (decimal, like Finder). A plain number of bytes → '1.5 MB'; a size like '1.5 MB' or '2GB' → bytes.",
                  ["value": ["type": "string", "description": "Bytes (e.g. '1500000') or a size ('1.5 MB', '2GB')."]],
                  required: ["value"]),
+            tool("weekday", "What day of the week a date falls on (YYYY-MM-DD) — e.g. '2026-06-22' → Monday. Pure calendar math; works for any past or future date.",
+                 ["date": ["type": "string", "description": "A date in YYYY-MM-DD form."]],
+                 required: ["date"]),
             tool("date_diff", "Count the days between two dates (YYYY-MM-DD). Omit 'to' to count from 'from' until today — e.g. 'how many days until 2026-12-25?'.",
                  ["from": ["type": "string", "description": "Start date, YYYY-MM-DD."],
                   "to": ["type": "string", "description": "End date, YYYY-MM-DD. Defaults to today if omitted."]],
@@ -3060,6 +3064,13 @@ struct ToolAgent: Sendable {
             let plain = MarkdownStripper.strip(text).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !plain.isEmpty else { return ("Nothing left after stripping markdown.", []) }
             return (plain, [])
+
+        case "weekday":
+            guard let date = arg("date"), !date.isEmpty else { return ("Missing 'date' (YYYY-MM-DD).", []) }
+            guard let day = Weekday.of(date) else {
+                return ("'\(date)' isn't a valid date — use YYYY-MM-DD.", [])
+            }
+            return ("\(date) is a \(day).", [])
 
         case "date_diff":
             guard let from = arg("from"), !from.isEmpty else { return ("Missing 'from' date (YYYY-MM-DD).", []) }
