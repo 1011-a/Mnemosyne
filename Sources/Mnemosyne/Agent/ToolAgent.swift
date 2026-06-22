@@ -182,6 +182,7 @@ struct ToolAgent: Sendable {
     • extract_acronyms(item) — pull acronyms (+ expansions when present) to build a glossary.
     • extract_code_blocks(item) — pull fenced code snippets (with language) from a file.
     • document_outline(item) — the file's exact markdown heading table-of-contents, instant + free.
+    • generate_toc(item) — clickable markdown TOC ([Heading](#anchor)) from a file's headings.
     • find_in_item(item, query) — grep one file for a phrase; returns matching lines with line numbers.
     • extract_quotes(item) — pull quoted passages (straight + smart quotes) from a file.
     • read_frontmatter(item) — parse a note's leading '---' YAML metadata block into fields.
@@ -295,6 +296,8 @@ struct ToolAgent: Sendable {
             tool("outline_item", "Extract the heading/section OUTLINE (table of contents) of a file — markdown headings, numbered sections, ALL-CAPS headers. Use to grasp a long document's structure before reading it.",
                  ["item": item], required: ["item"]),
             tool("document_outline", "The file's EXACT markdown heading hierarchy as an indented table of contents — instant and free (no model). Use to navigate a long markdown doc; complements outline_item (which summarizes).",
+                 ["item": item], required: ["item"]),
+            tool("generate_toc", "Build a clickable markdown table of contents from a file's headings — an indented list of [Heading](#anchor) links. Paste at the top of a long doc.",
                  ["item": item], required: ["item"]),
             tool("find_in_item", "Find the lines in ONE file that contain a phrase (case-insensitive) — a within-document grep with line numbers. Use for 'where does this note mention X?' (search_knowledge searches across files instead).",
                  ["item": item, "query": ["type": "string", "description": "The phrase/substring to find within the file."]],
@@ -1720,6 +1723,17 @@ struct ToolAgent: Sendable {
             }
             let n = HeadingExtractor.extract(full).count
             return ("Table of contents for '\(it.title)' (\(n) heading\(n == 1 ? "" : "s")):\n\(outline)", [])
+
+        case "generate_toc":
+            guard let ref = arg("item") else { return ("Missing 'item'.", []) }
+            let matches = await resolveItems(ref)
+            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
+            onStatus("Building TOC for \(it.title)…")
+            let full = ((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n")
+            guard let toc = TableOfContents.generate(full) else {
+                return ("No markdown headings (`#`) found in '\(it.title)' to build a TOC.", [])
+            }
+            return ("Table of contents for '\(it.title)':\n\(toc)", [])
 
         case "find_in_item":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
