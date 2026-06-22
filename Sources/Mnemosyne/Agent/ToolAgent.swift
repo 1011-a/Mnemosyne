@@ -234,6 +234,7 @@ struct ToolAgent: Sendable {
     • number_to_words(value) — spell an integer in English words (1234 → 'one thousand…').
     • ordinal(value) — format a number as an ordinal (23 → 23rd).
     • color(value) — convert hex ↔ RGB (#FF5733 ↔ rgb(255, 87, 51)).
+    • luhn(value) — validate a number's Luhn checksum (cards, IMEIs, IDs).
     • percentage(mode, a, b) — X% of Y / X is what % of Y / % change A→B.
     • roman_numeral(value) — convert Arabic ↔ Roman numerals (auto-detect direction).
     • duration(value) — seconds ↔ human duration (3661 ↔ '1h 1m 1s'; '1:30:00' → seconds).
@@ -484,6 +485,9 @@ struct ToolAgent: Sendable {
                  required: ["value"]),
             tool("color", "Convert a color between hex and RGB — '#FF5733' → rgb(255, 87, 51), or '255,87,51' → #FF5733. Supports shorthand like #fff.",
                  ["value": ["type": "string", "description": "A hex color (#RRGGBB or #RGB) or 'r,g,b'."]],
+                 required: ["value"]),
+            tool("luhn", "Check whether a number passes the Luhn checksum (used by credit-card numbers, IMEIs, and many IDs). Spaces and dashes are ignored.",
+                 ["value": ["type": "string", "description": "The number to validate."]],
                  required: ["value"]),
             tool("percentage", "Everyday percentage math. mode 'of' → a% of b; 'what_percent' → a is what % of b; 'change' → percent change from a to b. E.g. mode=of, a=10, b=200.",
                  ["mode": ["type": "string", "enum": ["of", "what_percent", "change"], "description": "Which calculation."],
@@ -2436,6 +2440,11 @@ struct ToolAgent: Sendable {
                 return ("Couldn't parse '\(value)' as a color — use #RRGGBB, #RGB, or 'r,g,b' (0–255).", [])
             }
             return (out, [])
+
+        case "luhn":
+            guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
+            let valid = Luhn.isValid(value)
+            return ("\(value) is \(valid ? "valid" : "invalid") (Luhn checksum).", [])
 
         case "percentage":
             guard let mode = arg("mode"),
