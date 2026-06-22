@@ -3855,7 +3855,7 @@ struct ToolAgent: Sendable {
             let body: [String: Any] = ["model": deepSeek.config.deepSeekModel,
                                        "messages": [["role": "system", "content": Self.translatePrompt(to: to)],
                                                     ["role": "user", "content": text]],
-                                       "temperature": 0.2, "tool_choice": "none"]
+                                       "temperature": SamplingPreset.temperature(for: .translation), "tool_choice": "none"]
             guard let data = try? await deepSeek.rawChat(body: JSONSerialization.data(withJSONObject: body)),
                   let resp = try? JSONDecoder().decode(ChatResponse.self, from: data),
                   let translated = resp.choices.first?.message.content, !translated.isEmpty else {
@@ -3877,7 +3877,7 @@ struct ToolAgent: Sendable {
             let body: [String: Any] = ["model": deepSeek.config.deepSeekModel,
                                        "messages": [["role": "system", "content": Self.translatePrompt(to: to)],
                                                     ["role": "user", "content": text]],
-                                       "temperature": 0.2, "tool_choice": "none"]
+                                       "temperature": SamplingPreset.temperature(for: .translation), "tool_choice": "none"]
             guard let data = try? await deepSeek.rawChat(body: JSONSerialization.data(withJSONObject: body)),
                   let resp = try? JSONDecoder().decode(ChatResponse.self, from: data),
                   let translated = resp.choices.first?.message.content, !translated.isEmpty else {
