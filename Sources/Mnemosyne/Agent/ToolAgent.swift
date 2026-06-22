@@ -216,6 +216,7 @@ struct ToolAgent: Sendable {
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
     • headline_case(text) — AP/Chicago title case (minor words stay lowercase).
+    • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
@@ -407,6 +408,10 @@ struct ToolAgent: Sendable {
                  required: ["text", "mode"]),
             tool("headline_case", "Title-case a headline AP/Chicago-style — major words capitalized, short articles/conjunctions/prepositions lowercased (unless first or last). E.g. 'the lord of the rings' → 'The Lord of the Rings'.",
                  ["text": ["type": "string", "description": "The headline/title to format."]],
+                 required: ["text"]),
+            tool("word_frequency", "Count the most frequent content words in some text (stopwords filtered) — a quick topical fingerprint. Set 'top' to cap how many to return (default 10).",
+                 ["text": ["type": "string", "description": "The text to analyze."],
+                  "top": ["type": "integer", "description": "How many top words to return (default 10)."]],
                  required: ["text"]),
             tool("replace_text", "Find and replace text within a string — replaces every occurrence of 'find' with 'replace' and reports the count. Set case_insensitive to true to ignore case.",
                  ["text": ["type": "string", "description": "The text to transform."],
@@ -2241,6 +2246,14 @@ struct ToolAgent: Sendable {
         case "headline_case":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             return (HeadlineCase.titleize(text), [])
+
+        case "word_frequency":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            let n = Int(arg("top") ?? "") ?? 10
+            guard let summary = WordFrequency.summary(text, n: n) else {
+                return ("No content words found (after removing short/stop words).", [])
+            }
+            return (summary, [])
 
         case "replace_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
