@@ -241,6 +241,7 @@ struct ToolAgent: Sendable {
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • word_diff(a, b) — word-level diff of two texts (added vs removed words).
+    • text_similarity(a, b) — Jaccard word-overlap similarity of two texts (0–100%).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
     • wrap_text(text, width) — word-wrap text to a column width (preserves paragraphs).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
@@ -522,6 +523,10 @@ struct ToolAgent: Sendable {
                   "end": ["type": "string", "description": "The closing marker."]],
                  required: ["text", "start", "end"]),
             tool("word_diff", "Compare two texts at the WORD level — which words were added vs removed (case-insensitive). Complements the line-level diff tools.",
+                 ["a": ["type": "string", "description": "The first text."],
+                  "b": ["type": "string", "description": "The second text."]],
+                 required: ["a", "b"]),
+            tool("text_similarity", "Measure how similar two texts are — a Jaccard word-overlap ratio (0–100%). Use to gauge how alike two notes/passages are.",
                  ["a": ["type": "string", "description": "The first text."],
                   "b": ["type": "string", "description": "The second text."]],
                  required: ["a", "b"]),
@@ -2650,6 +2655,11 @@ struct ToolAgent: Sendable {
         case "word_diff":
             guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
             return (WordDiff.summary(a, b), [])
+
+        case "text_similarity":
+            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
+            let pct = Int((Similarity.jaccard(a, b) * 100).rounded())
+            return ("Similarity: \(pct)% (Jaccard word overlap).", [])
 
         case "extract_json":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
