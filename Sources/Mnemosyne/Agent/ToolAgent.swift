@@ -32,11 +32,6 @@ struct ToolAgent: Sendable {
     /// the agentic loop runs deterministically, offline.
     var llmOverride: (any Fathom.LLMClient)? = nil
 
-    /// The LLM client the ACT loop calls each round (the SDK transport, by default).
-    private var llm: any Fathom.LLMClient {
-        llmOverride ?? AgentLLMClient(deepSeek: deepSeek, temperature: temperature)
-    }
-
     /// What the critic decides after reviewing the gathered evidence.
     enum CriticAction: Equatable { case ok, search(String), note(String) }
 
@@ -932,6 +927,14 @@ struct ToolAgent: Sendable {
         // tool-call round advances roughly one step — a live, honest pointer. The
         // final state is corrected by a cheap classification pass after the loop.
         var toolRounds = 0
+        // Build the round client once. With no test override, wire the DeepSeek-native
+        // reasoning sink so `deepseek-reasoner`'s chain-of-thought surfaces as a live
+        // "thinking" line in the activity trace (a no-op for deepseek-chat, which has none).
+        let roundClient: any Fathom.LLMClient = llmOverride ?? AgentLLMClient(
+            deepSeek: deepSeek, temperature: temperature,
+            onReasoning: { reasoning in
+                if let snip = DeepSeekReasoning.snippet(reasoning) { onStatus("💭 " + snip) }
+            })
         // Loop-guard (Claude Code/Codex best practice): never run the SAME tool with
         // the SAME args twice in a turn — return the prior result and nudge the model
         // to do something different or answer. Stops wasted rounds + tool ping-pong.
@@ -945,7 +948,7 @@ struct ToolAgent: Sendable {
         for _ in 0..<rounds {
             // The model call for the ACT loop now flows through the Fathom
             // SDK's LLMClient — one place owns the wire format, and tests inject a mock.
-            let completion = try await llm.complete(
+            let completion = try await roundClient.complete(
                 messages: AgentLLMClient.messages(from: convo), tools: Self.tools())
             guard completion.wantsTools else {
                 finish = .natural

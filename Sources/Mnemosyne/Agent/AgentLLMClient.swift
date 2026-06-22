@@ -11,6 +11,11 @@ import Fathom
 struct AgentLLMClient: Fathom.LLMClient {
     let deepSeek: DeepSeekClient
     var temperature: Double = 0.3
+    /// DeepSeek-native: when `deepseek-reasoner` is the brain, each round also returns a
+    /// `reasoning_content` chain-of-thought that Fathom's `Completion` doesn't model. If set,
+    /// this sink receives that reasoning per round so the tool-loop can surface a "thinking"
+    /// trace. nil (default) ⇒ reasoning is ignored, exactly as before.
+    var onReasoning: (@Sendable (String) -> Void)? = nil
 
     func complete(messages: [Fathom.ChatMessage],
                   tools: [[String: Any]]) async throws -> Fathom.Completion {
@@ -21,6 +26,9 @@ struct AgentLLMClient: Fathom.LLMClient {
         ]
         if !tools.isEmpty { body["tools"] = tools; body["tool_choice"] = "auto" }
         let data = try await deepSeek.rawChat(body: JSONSerialization.data(withJSONObject: body))
+        if let sink = onReasoning, let reasoning = DeepSeekReasoning.extract(from: data) {
+            sink(reasoning)
+        }
         return try Fathom.DeepSeekClient.parseCompletion(data)
     }
 
