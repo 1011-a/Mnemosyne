@@ -223,6 +223,7 @@ struct ToolAgent: Sendable {
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
+    • json_merge(a, b, deep) — merge two JSON objects (second wins; deep by default).
     • sort_lines(text, …) — sort lines (alpha/numeric, reverse, unique).
     • compare_lists(a, b, mode) — set ops on two lists (common/only_a/only_b/union).
     • strip_markdown(text) — remove markdown formatting to get plain prose.
@@ -439,6 +440,11 @@ struct ToolAgent: Sendable {
                  ["json": ["type": "string", "description": "The JSON text to format."],
                   "mode": ["type": "string", "enum": ["pretty", "minify"], "description": "pretty (default) or minify."]],
                  required: ["json"]),
+            tool("json_merge", "Merge two JSON objects — the second wins on conflicts. Deep by default (recurses into nested objects); set deep=false for a top-level-only merge. Use to combine configs/settings.",
+                 ["a": ["type": "string", "description": "Base JSON object."],
+                  "b": ["type": "string", "description": "JSON object to merge in (wins on conflicts)."],
+                  "deep": ["type": "boolean", "description": "Recurse into nested objects (default true)."]],
+                 required: ["a", "b"]),
             tool("sort_lines", "Sort the lines of a block of text — alphabetical by default. Set numeric=true to sort by number, descending=true to reverse, unique=true to drop duplicates. Blank lines are removed.",
                  ["text": ["type": "string", "description": "The lines to sort (one per line)."],
                   "numeric": ["type": "boolean", "description": "Sort by numeric value (default false)."],
@@ -2390,6 +2396,14 @@ struct ToolAgent: Sendable {
                 return ("That isn't valid JSON (needs a top-level object or array).", [])
             }
             return ("```json\n\(out)\n```", [])
+
+        case "json_merge":
+            guard let a = arg("a"), !a.isEmpty, let b = arg("b"), !b.isEmpty else { return ("Need both 'a' and 'b' JSON objects.", []) }
+            let deep = (arg("deep") ?? "true").lowercased() != "false"
+            guard let merged = JSONMerge.merge(a, b, deep: deep) else {
+                return ("Both 'a' and 'b' must be JSON objects ({...}).", [])
+            }
+            return ("```json\n\(merged)\n```", [])
 
         case "sort_lines":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
