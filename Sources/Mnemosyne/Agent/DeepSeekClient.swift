@@ -45,6 +45,20 @@ struct DeepSeekClient: Sendable {
         return (answer, DeepSeekReasoning.extract(from: data))
     }
 
+    /// DeepSeek-native: complete with `logprobs` enabled and return the answer plus a 0…1
+    /// confidence score (average token probability). nil confidence if the provider didn't return
+    /// logprobs. Lets callers flag low-confidence answers for verification. See `TokenConfidence`.
+    func answerWithConfidence(_ messages: [[String: Any]], temperature: Double = 0.3) async throws -> (answer: String, confidence: Double?) {
+        let body: [String: Any] = [
+            "model": config.deepSeekModel, "temperature": temperature,
+            "messages": messages, "logprobs": true,
+        ]
+        let data = try await rawChat(body: try JSONSerialization.data(withJSONObject: body))
+        let answer = (try? JSONDecoder().decode(CompletionResponse.self, from: data))?.choices.first?.message.content ?? ""
+        let confidence = TokenConfidence.parse(from: data).flatMap { TokenConfidence.averageProbability($0) }
+        return (answer, confidence)
+    }
+
     /// One-shot completion.
     func complete(_ messages: [ChatMessage], temperature: Double = 0.4) async throws -> String {
         let req = try request(messages: messages, stream: false, temperature: temperature)
