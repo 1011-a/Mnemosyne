@@ -231,6 +231,7 @@ struct ToolAgent: Sendable {
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • count_text(text) — characters/words/lines/sentences of provided text.
     • palindrome(text) — check if text reads the same forwards/backwards (ignoring case/punctuation).
+    • reverse(text, mode) — reverse text by characters or by word order.
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
     • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
@@ -478,6 +479,10 @@ struct ToolAgent: Sendable {
                  required: ["text"]),
             tool("palindrome", "Check whether text reads the same forwards and backwards (ignoring case and punctuation). E.g. 'A man, a plan, a canal: Panama'.",
                  ["text": ["type": "string", "description": "The text to check."]],
+                 required: ["text"]),
+            tool("reverse", "Reverse text. mode 'chars' (default) reverses the characters; mode 'words' reverses the word order.",
+                 ["text": ["type": "string", "description": "The text to reverse."],
+                  "mode": ["type": "string", "enum": ["chars", "words"], "description": "chars (default) or words."]],
                  required: ["text"]),
             tool("replace_text", "Find and replace text within a string — replaces every occurrence of 'find' with 'replace' and reports the count. Set case_insensitive to true to ignore case.",
                  ["text": ["type": "string", "description": "The text to transform."],
@@ -2501,6 +2506,10 @@ struct ToolAgent: Sendable {
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             let yes = Palindrome.isPalindrome(text)
             return ("'\(text)' is \(yes ? "a palindrome" : "not a palindrome").", [])
+
+        case "reverse":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            return ((arg("mode") ?? "chars").lowercased() == "words" ? Reverse.words(text) : Reverse.chars(text), [])
 
         case "replace_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
