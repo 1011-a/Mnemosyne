@@ -215,6 +215,7 @@ struct ToolAgent: Sendable {
     • make_checklist(data) — turn a list of items into a markdown checklist (- [ ] …).
     • format_list(text, style) — reformat a list as numbered/bullet/comma/and (Oxford).
     • change_case(text, mode) — convert text to upper/lower/title/sentence case.
+    • headline_case(text) — AP/Chicago title case (minor words stay lowercase).
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
@@ -404,6 +405,9 @@ struct ToolAgent: Sendable {
                  ["text": ["type": "string", "description": "The text to convert."],
                   "mode": ["type": "string", "enum": ["upper", "lower", "title", "sentence"], "description": "Target case."]],
                  required: ["text", "mode"]),
+            tool("headline_case", "Title-case a headline AP/Chicago-style — major words capitalized, short articles/conjunctions/prepositions lowercased (unless first or last). E.g. 'the lord of the rings' → 'The Lord of the Rings'.",
+                 ["text": ["type": "string", "description": "The headline/title to format."]],
+                 required: ["text"]),
             tool("replace_text", "Find and replace text within a string — replaces every occurrence of 'find' with 'replace' and reports the count. Set case_insensitive to true to ignore case.",
                  ["text": ["type": "string", "description": "The text to transform."],
                   "find": ["type": "string", "description": "The substring to find."],
@@ -2233,6 +2237,10 @@ struct ToolAgent: Sendable {
                 return ("Unknown case mode. Use 'upper', 'lower', 'title', or 'sentence'.", [])
             }
             return (result, [])
+
+        case "headline_case":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            return (HeadlineCase.titleize(text), [])
 
         case "replace_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
