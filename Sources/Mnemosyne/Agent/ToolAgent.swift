@@ -280,6 +280,7 @@ struct ToolAgent: Sendable {
     • sparkline(data) — compact one-line trend (▁▂▃▄▅▆▇█) from a number series.
     • quartiles(data) — Q1/median/Q3/IQR of a list of numbers.
     • percentile(data, p) — the Nth percentile of a number list (e.g. p95 latency).
+    • z_score(data, value) — standard score of a value vs a number list (or standardize the list).
     • outliers(data, k) — flag outliers in a number list via Tukey's IQR fences.
     • correlation(x, y) — Pearson r between two equal-length number lists.
     • moving_average(data, window) — rolling mean of a number series to reveal its trend.
@@ -705,6 +706,10 @@ struct ToolAgent: Sendable {
             tool("percentile", "Compute the Nth percentile of a list of numbers (linear interpolation, like NumPy) — e.g. the 95th percentile of latencies. Set 'p' (0–100, default 50 = median). Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
                   "p": ["type": "string", "description": "Percentile 0–100 (default 50)."]],
+                 required: ["data"]),
+            tool("z_score", "Compute the z-score of a value against a list of numbers — how many standard deviations from the mean (population σ). Pass 'value' to score one number, or omit it to standardize the whole list. Values separated by commas/spaces.",
+                 ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
+                  "value": ["type": "string", "description": "A single number to score (optional; omit to standardize the list)."]],
                  required: ["data"]),
             tool("histogram", "Render a text histogram of a number list — buckets the values into bins and shows the distribution. Set 'bins' (default 10). Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
@@ -3079,6 +3084,22 @@ struct ToolAgent: Sendable {
             }
             let f = Quartiles.fmt
             return ("Q1 \(f(q.q1)), median \(f(q.q2)), Q3 \(f(q.q3)), IQR \(f(q.iqr)) (min \(f(nums.min()!)), max \(f(nums.max()!)))", [])
+
+        case "z_score":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
+            let nums = NumberStats.parse(data)
+            guard !nums.isEmpty else { return ("Couldn't parse any numbers from the data.", []) }
+            if let valueStr = arg("value"), let target = Double(valueStr) {
+                guard let z = ZScore.score(of: target, in: nums) else {
+                    return ("Can't compute a z-score — the numbers have zero spread (all identical).", [])
+                }
+                return ("z = \(Quartiles.fmt((z * 1000).rounded() / 1000)) for \(Quartiles.fmt(target)) (n=\(nums.count)).", [])
+            }
+            guard let zs = ZScore.standardize(nums) else {
+                return ("Can't standardize — the numbers have zero spread (all identical).", [])
+            }
+            let list = zs.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
+            return ("z-scores: \(list)", [])
 
         case "percentile":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
