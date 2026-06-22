@@ -285,6 +285,7 @@ struct ToolAgent: Sendable {
     • correlation(x, y) — Pearson r between two equal-length number lists.
     • moving_average(data, window) — rolling mean of a number series to reveal its trend.
     • running_total(data) — cumulative sums of a number series (last = grand total).
+    • pct_change(data) — period-over-period % change of a number series.
     • histogram(data, bins) — text histogram of a number list's distribution.
     • tally(data) — count occurrences of each distinct value in a list (GROUP BY).
     • extract_contacts(item) — one-call roll-up of the people, emails, and phones in a file.
@@ -726,6 +727,9 @@ struct ToolAgent: Sendable {
             tool("moving_average", "Smooth a number series with a simple moving average (rolling mean) over a window — reveals the trend. Set 'window' (default 3). Returns one value per window position. Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."],
                   "window": ["type": "integer", "description": "Window size (default 3)."]],
+                 required: ["data"]),
+            tool("pct_change", "Period-over-period percentage change of a number series — how each value compares to the previous one (e.g. month-over-month growth). Returns n−1 values; a step after a zero is n/a. Pass values separated by commas or spaces.",
+                 ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."]],
                  required: ["data"]),
             tool("running_total", "Cumulative (running) totals of a number series — each value is the sum so far; the last is the grand total. Great for finances/progress. Pass values separated by commas or spaces.",
                  ["data": ["type": "string", "description": "Numbers separated by commas/spaces/newlines."]],
@@ -3159,6 +3163,19 @@ struct ToolAgent: Sendable {
             }
             let list = ma.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
             return ("\(w)-point moving average (\(ma.count) values): \(list)", [])
+
+        case "pct_change":
+            guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
+            let nums = NumberStats.parse(data)
+            guard let changes = PctChange.series(nums) else {
+                return ("Need at least 2 numbers to compute changes.", [])
+            }
+            let list = changes.map { c -> String in
+                guard let c else { return "n/a" }
+                let v = Quartiles.fmt((c * 100).rounded() / 100)
+                return (c > 0 ? "+" : "") + v + "%"
+            }.joined(separator: ", ")
+            return ("Period-over-period change (\(changes.count) steps): \(list)", [])
 
         case "running_total":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
