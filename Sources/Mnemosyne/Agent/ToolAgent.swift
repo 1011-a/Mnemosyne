@@ -243,6 +243,7 @@ struct ToolAgent: Sendable {
     • strip_markdown(text) — remove markdown formatting to get plain prose.
     • number_bases(value) — show an integer in decimal/hex/binary/octal (auto-detects 0x/0b/0o).
     • number_to_words(value) — spell an integer in English words (1234 → 'one thousand…').
+    • number_format(value) — add thousands separators (1234567 → 1,234,567).
     • ordinal(value) — format a number as an ordinal (23 → 23rd).
     • gcd_lcm(a, b) — greatest common divisor and least common multiple of two integers.
     • factorize(value) — prime check or prime factorization (60 → 2 × 2 × 3 × 5).
@@ -528,6 +529,9 @@ struct ToolAgent: Sendable {
                  required: ["value"]),
             tool("number_to_words", "Spell an integer in English words — e.g. 1234 → 'one thousand two hundred thirty-four'. Handles zero and negatives, up to trillions.",
                  ["value": ["type": "string", "description": "The integer to spell out."]],
+                 required: ["value"]),
+            tool("number_format", "Add thousands separators to a number — '1234567' → '1,234,567'. Keeps sign and decimals.",
+                 ["value": ["type": "string", "description": "The number to format."]],
                  required: ["value"]),
             tool("ordinal", "Format a number as an ordinal — 1 → 1st, 23 → 23rd, 111 → 111th (handles the 11/12/13 exceptions).",
                  ["value": ["type": "string", "description": "The integer to make ordinal."]],
@@ -2577,6 +2581,11 @@ struct ToolAgent: Sendable {
             }
             guard let words = NumberWords.spell(n) else { return ("That number is too large to spell out.", []) }
             return ("\(n) = \(words)", [])
+
+        case "number_format":
+            guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
+            guard let out = NumberFormat.grouped(value) else { return ("'\(value)' isn't a number.", []) }
+            return (out, [])
 
         case "ordinal":
             guard let value = arg("value"), let n = Int(value.trimmingCharacters(in: .whitespaces)) else {
