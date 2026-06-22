@@ -222,6 +222,7 @@ struct ToolAgent: Sendable {
     • word_frequency(text, top) — most frequent content words in provided text (stopwords filtered).
     • replace_text(text, find, replace) — find/replace in a string with a count (optional case-insensitive).
     • extract_between(text, start, end) — pull spans between two markers (e.g. <b>…</b>).
+    • reindent(text, mode, spaces) — indent each line, or dedent common leading whitespace.
     • extract_json(text) — pull valid JSON object(s)/array(s) embedded in a larger text.
     • format_json(json, mode) — pretty-print or minify a JSON string.
     • json_merge(a, b, deep) — merge two JSON objects (second wins; deep by default).
@@ -437,6 +438,11 @@ struct ToolAgent: Sendable {
                   "start": ["type": "string", "description": "The opening marker."],
                   "end": ["type": "string", "description": "The closing marker."]],
                  required: ["text", "start", "end"]),
+            tool("reindent", "Indent or dedent a block of text. mode 'indent' adds 'spaces' leading spaces to each line; mode 'dedent' strips the common leading whitespace. Handy for code snippets.",
+                 ["text": ["type": "string", "description": "The text to reindent."],
+                  "mode": ["type": "string", "enum": ["indent", "dedent"], "description": "indent or dedent."],
+                  "spaces": ["type": "integer", "description": "Spaces to add for 'indent' (default 2)."]],
+                 required: ["text", "mode"]),
             tool("extract_json", "Pull valid JSON object(s) or array(s) embedded in a larger text — JSON buried in logs, model output, or prose. Returns each JSON block found.",
                  ["text": ["type": "string", "description": "The text that may contain JSON."]],
                  required: ["text"]),
@@ -2339,6 +2345,18 @@ struct ToolAgent: Sendable {
                 return ("No text found between '\(start)' and '\(end)'.", [])
             }
             return (summary, [])
+
+        case "reindent":
+            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
+            switch (arg("mode") ?? "").lowercased() {
+            case "indent":
+                let spaces = Int(arg("spaces") ?? "") ?? 2
+                return (TextIndent.indent(text, spaces: spaces), [])
+            case "dedent":
+                return (TextIndent.dedent(text), [])
+            default:
+                return ("Set mode to 'indent' or 'dedent'.", [])
+            }
 
         case "extract_json":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
