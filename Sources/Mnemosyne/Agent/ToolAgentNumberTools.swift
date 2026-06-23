@@ -1,4 +1,5 @@
 import Foundation
+import Fathom
 
 /// Number / statistics tool handlers, extracted from `ToolAgent`'s main `handleTool` switch to
 /// keep that file focused on knowledge/agent orchestration rather than a 4000-line god-switch.
@@ -69,16 +70,16 @@ extension ToolAgent {
         case "outliers":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
             let k = Swift.max(Double(arg("k") ?? "") ?? 1.5, 0.1)
-            guard let r = Outliers.detect(NumberStats.parse(data), k: k) else {
+            guard let r = Fathom.Series.outliers(NumberStats.parse(data), k: k) else {
                 return ("Need at least 4 numbers to detect outliers.", [])
             }
             let f = Quartiles.fmt
             let outs = r.low + r.high
             if outs.isEmpty {
-                return ("No outliers (k=\(f(k)) fences \(f(r.lowerFence))…\(f(r.upperFence))).", [])
+                return ("No outliers (k=\(f(k)) fences \(f(r.lower))…\(f(r.upper))).", [])
             }
             let list = outs.map(f).joined(separator: ", ")
-            return ("\(outs.count) outlier\(outs.count == 1 ? "" : "s"): \(list) (outside \(f(r.lowerFence))…\(f(r.upperFence)), k=\(f(k))).", [])
+            return ("\(outs.count) outlier\(outs.count == 1 ? "" : "s"): \(list) (outside \(f(r.lower))…\(f(r.upper)), k=\(f(k))).", [])
 
         case "correlation":
             guard let xs = arg("x"), !xs.isEmpty, let ys = arg("y"), !ys.isEmpty else {
@@ -98,7 +99,7 @@ extension ToolAgent {
             let nums = NumberStats.parse(data)
             guard !nums.isEmpty else { return ("Couldn't parse any numbers from the data.", []) }
             let w = Swift.max(Int(arg("window") ?? "") ?? 3, 1)
-            guard let ma = MovingAverage.simple(nums, window: w) else {
+            guard let ma = Fathom.Series.movingAverage(nums, window: w) else {
                 return ("Window (\(w)) must be between 1 and the number of values (\(nums.count)).", [])
             }
             let list = ma.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
@@ -107,7 +108,7 @@ extension ToolAgent {
         case "pct_change":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
             let nums = NumberStats.parse(data)
-            guard let changes = PctChange.series(nums) else {
+            guard let changes = Fathom.Series.pctChange(nums) else {
                 return ("Need at least 2 numbers to compute changes.", [])
             }
             let list = changes.map { c -> String in
@@ -121,7 +122,7 @@ extension ToolAgent {
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
             let nums = NumberStats.parse(data)
             guard !nums.isEmpty else { return ("Couldn't parse any numbers from the data.", []) }
-            let totals = RunningTotal.cumulative(nums)
+            let totals = Fathom.Series.runningTotal(nums)
             let list = totals.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
             return ("Running totals (\(totals.count) values): \(list) — grand total \(Quartiles.fmt((totals.last! * 100).rounded() / 100)).", [])
 
