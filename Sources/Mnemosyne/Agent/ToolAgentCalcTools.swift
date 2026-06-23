@@ -36,19 +36,19 @@ extension ToolAgent {
         case "duration":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
             if let secs = Int(value.trimmingCharacters(in: .whitespaces)) {
-                return ("\(secs) seconds = \(HumanDuration.humanize(secs))", [])
+                return ("\(secs) seconds = \(Fathom.HumanDuration.humanize(secs))", [])
             }
-            guard let secs = HumanDuration.parse(value) else {
+            guard let secs = Fathom.HumanDuration.parse(value) else {
                 return ("Couldn't parse '\(value)' — use seconds, '1h 30m', or '1:30:00'.", [])
             }
-            return ("\(value) = \(secs) seconds (\(HumanDuration.humanize(secs)))", [])
+            return ("\(value) = \(secs) seconds (\(Fathom.HumanDuration.humanize(secs)))", [])
 
         case "file_size":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
             if let bytes = Int(value.trimmingCharacters(in: .whitespaces)) {
-                return ("\(bytes) bytes = \(ByteSize.humanize(bytes))", [])
+                return ("\(bytes) bytes = \(Fathom.ByteSize.humanize(bytes))", [])
             }
-            guard let bytes = ByteSize.parse(value) else {
+            guard let bytes = Fathom.ByteSize.parse(value) else {
                 return ("Couldn't parse '\(value)' — use bytes or a size like '1.5 MB'.", [])
             }
             return ("\(value) = \(bytes) bytes", [])
@@ -86,10 +86,10 @@ extension ToolAgent {
             guard let value = Double(arg("value") ?? ""), let from = arg("from"), let to = arg("to") else {
                 return ("Need numeric 'value' and 'from'/'to' units (C, F, or K).", [])
             }
-            guard let result = TempConvert.convert(value, from: from, to: to) else {
+            guard let result = Fathom.Temperature.convert(value, from: from, to: to) else {
                 return ("Units must be C, F, or K.", [])
             }
-            return ("\(TempConvert.fmt(value))° \(from.uppercased().prefix(1)) = \(TempConvert.fmt(result))° \(to.uppercased().prefix(1))", [])
+            return ("\(Fathom.Temperature.fmt(value))° \(from.uppercased().prefix(1)) = \(Fathom.Temperature.fmt(result))° \(to.uppercased().prefix(1))", [])
 
         case "color":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
