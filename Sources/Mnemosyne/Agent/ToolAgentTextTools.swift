@@ -1,4 +1,5 @@
 import Foundation
+import Fathom
 
 /// Text utility / comparison tool handlers, extracted from `ToolAgent`'s main `handleTool` switch
 /// to keep that file focused. Pure value-in/value-out (no store/network/UI). `handleTextTool`
@@ -30,14 +31,14 @@ extension ToolAgent {
 
         case "palindrome":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let yes = Palindrome.isPalindrome(text)
+            let yes = Fathom.TextCheck.isPalindrome(text)
             return ("'\(text)' is \(yes ? "a palindrome" : "not a palindrome").", [])
 
         case "anagram":
             guard let a = arg("a"), !a.isEmpty, let b = arg("b"), !b.isEmpty else {
                 return ("Need two phrases ('a' and 'b') to compare.", [])
             }
-            let yes = Anagram.isAnagram(a, b)
+            let yes = Fathom.TextCheck.isAnagram(a, b)
             return ("'\(a)' and '\(b)' are \(yes ? "anagrams" : "NOT anagrams").", [])
 
         case "reverse":
@@ -48,7 +49,7 @@ extension ToolAgent {
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             guard let length = Int(arg("length") ?? ""), length > 0 else { return ("Need a positive 'length'.", []) }
             let byWords = (arg("mode") ?? "chars").lowercased() == "words"
-            return (byWords ? Truncate.toWords(text, length) : Truncate.toChars(text, length), [])
+            return (byWords ? Fathom.TextTruncate.toWords(text, length) : Fathom.TextTruncate.toChars(text, length), [])
 
         case "replace_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }

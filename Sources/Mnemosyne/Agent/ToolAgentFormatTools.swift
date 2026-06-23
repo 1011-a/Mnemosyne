@@ -1,4 +1,5 @@
 import Foundation
+import Fathom
 
 /// Formatting / presentation / inspection tool handlers (charts, case styles, slugs, lists, URL &
 /// JWT inspection, word frequency), extracted from `ToolAgent`'s main `handleTool` switch to keep
@@ -60,12 +61,12 @@ extension ToolAgent {
 
         case "headline_case":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            return (HeadlineCase.titleize(text), [])
+            return (Fathom.HeadlineCase.titleize(text), [])
 
         case "acronym":
             guard let phrase = arg("phrase"), !phrase.isEmpty else { return ("Missing 'phrase'.", []) }
             let skipMinor = (arg("skip_minor") ?? "false").lowercased() == "true"
-            let acronym = AcronymMaker.make(phrase, skipMinor: skipMinor)
+            let acronym = Fathom.Acronym.make(phrase, skipMinor: skipMinor)
             guard !acronym.isEmpty else { return ("No letters to acronymize in '\(phrase)'.", []) }
             return ("\(phrase) → \(acronym)", [])
 
