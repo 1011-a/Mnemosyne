@@ -100,17 +100,17 @@ extension ToolAgent {
 
         case "luhn":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
-            let valid = Luhn.isValid(value)
+            let valid = Fathom.Luhn.isValid(value)
             return ("\(value) is \(valid ? "valid" : "invalid") (Luhn checksum).", [])
 
         case "password_strength":
             guard let pw = arg("password"), !pw.isEmpty else { return ("Missing 'password'.", []) }
-            guard let r = PasswordStrength.evaluate(pw) else { return ("Nothing to evaluate.", []) }
+            guard let r = Fathom.PasswordStrength.evaluate(pw) else { return ("Nothing to evaluate.", []) }
             return ("\(Int(r.bits.rounded())) bits of entropy — \(r.label) (\(pw.count) chars, pool \(r.poolSize)).", [])
 
         case "validate_email":
             guard let email = arg("email"), !email.isEmpty else { return ("Missing 'email'.", []) }
-            return ("'\(email)' is \(EmailValidator.isValid(email) ? "a valid" : "not a valid") email address.", [])
+            return ("'\(email)' is \(Fathom.Email.isValid(email) ? "a valid" : "not a valid") email address.", [])
 
         case "percentage":
             guard let mode = arg("mode"),
