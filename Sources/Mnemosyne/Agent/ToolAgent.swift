@@ -2699,72 +2699,6 @@ struct ToolAgent: Sendable {
             guard !slug.isEmpty else { return ("'\(text)' has no slug-able characters (try a title with letters/digits).", []) }
             return (slug, [])
 
-        case "hash_text":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            return ("SHA-256: \(HashUtil.sha256(text))\nShort: \(HashUtil.short(text))", [])
-
-        case "base64":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            if (arg("mode") ?? "encode").lowercased() == "decode" {
-                guard let decoded = Base64Util.decode(text) else {
-                    return ("That isn't valid base64 (or the bytes aren't UTF-8 text).", [])
-                }
-                return (decoded, [])
-            }
-            return (Base64Util.encode(text), [])
-
-        case "html_entities":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let unescape = (arg("mode") ?? "escape").lowercased() == "unescape"
-            return (unescape ? HTMLEntities.unescape(text) : HTMLEntities.escape(text), [])
-
-        case "url_encode":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            if (arg("mode") ?? "encode").lowercased() == "decode" {
-                guard let decoded = URLEncoding.decode(text) else { return ("That has malformed percent-encoding.", []) }
-                return (decoded, [])
-            }
-            return (URLEncoding.encode(text), [])
-
-        case "caesar":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let n = Int(arg("shift") ?? "") ?? 13
-            return (Caesar.shift(text, by: n), [])
-
-        case "nato":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            guard let spelled = NatoPhonetic.spell(text) else { return ("Nothing to spell.", []) }
-            return (spelled, [])
-
-        case "vigenere":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            guard let key = arg("key"), !key.isEmpty else { return ("Missing 'key' (the keyword).", []) }
-            let decode = (arg("mode") ?? "encode").lowercased() == "decode"
-            guard let out = VigenereCipher.transform(text, key: key, decode: decode) else {
-                return ("The key must contain at least one letter.", [])
-            }
-            return (out, [])
-
-        case "char_frequency":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let rows = CharFrequency.analyze(text)
-            guard !rows.isEmpty else { return ("No letters to analyze.", []) }
-            let top = Swift.min(Swift.max(Int(arg("top") ?? "") ?? 26, 1), 26)
-            return ("```\n\(CharFrequency.table(rows, limit: top))\n```", [])
-
-        case "morse":
-            guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let mode = (arg("mode") ?? "").lowercased()
-            // Auto-detect: text made only of . - / and whitespace is Morse → decode.
-            let looksLikeMorse = text.allSatisfy { ".-/ \n\t".contains($0) }
-            let decode = mode == "decode" || (mode != "encode" && looksLikeMorse)
-            if decode {
-                guard let out = MorseCode.decode(text) else { return ("Couldn't decode any Morse.", []) }
-                return (out, [])
-            }
-            guard let out = MorseCode.encode(text) else { return ("Nothing encodable to Morse.", []) }
-            return ("```\n\(out)\n```", [])
-
         case "make_checklist":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of items).", []) }
             guard let checklist = ChecklistBuilder.build(data) else {
@@ -3989,8 +3923,9 @@ struct ToolAgent: Sendable {
             return ("Marked “\(r.title)” as done.", [])
 
         default:
-            // Pure number/stats tools live in ToolAgentNumberTools.swift to keep this file focused.
+            // Pure tools live in focused ToolAgent*Tools.swift files to keep this file lean.
             if let result = handleNumberTool(name, args: args) { return result }
+            if let result = handleEncodingTool(name, args: args) { return result }
             return ("Unknown tool '\(name)'.", [])
         }
     }
