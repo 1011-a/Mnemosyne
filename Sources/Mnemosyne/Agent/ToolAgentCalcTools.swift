@@ -1,4 +1,5 @@
 import Foundation
+import Fathom
 
 /// Calculator / unit-conversion / finance / validation tool handlers, extracted from `ToolAgent`'s
 /// main `handleTool` switch to keep that file focused. Pure value-in/value-out (no store/network/
@@ -20,14 +21,14 @@ extension ToolAgent {
                   let from = Int(arg("from") ?? ""), let to = Int(arg("to") ?? "") else {
                 return ("Need 'value' and integer 'from'/'to' bases.", [])
             }
-            guard let out = BaseConvert.convert(value, from: from, to: to) else {
+            guard let out = Fathom.BaseConvert.convert(value, from: from, to: to) else {
                 return ("Couldn't convert — bases must be 2–36 and '\(value)' valid in base \(from).", [])
             }
             return ("\(value) (base \(from)) = \(out) (base \(to))", [])
 
         case "roman_numeral":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
-            guard let out = Roman.convert(value) else {
+            guard let out = Fathom.RomanNumeral.convert(value) else {
                 return ("Couldn't convert '\(value)' — use a number 1–3999 or a valid Roman numeral.", [])
             }
             return ("\(value) = \(out)", [])
@@ -68,17 +69,17 @@ extension ToolAgent {
             guard let value = arg("value"), let n = Int(value.trimmingCharacters(in: .whitespaces)) else {
                 return ("Need an integer 'value'.", [])
             }
-            return (Ordinal.format(n), [])
+            return (Fathom.Ordinal.format(n), [])
 
         case "gcd_lcm":
             guard let a = Int(arg("a") ?? ""), let b = Int(arg("b") ?? "") else { return ("Need integer 'a' and 'b'.", []) }
-            return ("gcd(\(a), \(b)) = \(MathGCD.gcd(a, b)), lcm = \(MathGCD.lcm(a, b))", [])
+            return ("gcd(\(a), \(b)) = \(Fathom.IntMath.gcd(a, b)), lcm = \(Fathom.IntMath.lcm(a, b))", [])
 
         case "factorize":
             guard let n = Int(arg("value") ?? "") else { return ("Need an integer 'value'.", []) }
             guard n >= 2, n <= 1_000_000_000_000 else { return ("Give an integer between 2 and 1,000,000,000,000.", []) }
-            if PrimeUtil.isPrime(n) { return ("\(n) is prime.", []) }
-            let factors = PrimeUtil.factorize(n)
+            if Fathom.IntMath.isPrime(n) { return ("\(n) is prime.", []) }
+            let factors = Fathom.IntMath.factorize(n)
             return ("\(n) = \(factors.map(String.init).joined(separator: " × "))", [])
 
         case "temperature":

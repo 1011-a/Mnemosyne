@@ -12,7 +12,7 @@ extension ToolAgent {
         switch name {
         case "hash_text":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            return ("SHA-256: \(HashUtil.sha256(text))\nShort: \(HashUtil.short(text))", [])
+            return ("SHA-256: \(Fathom.Hashing.sha256Hex(text))\nShort: \(Fathom.Hashing.short(text))", [])
 
         case "base64":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
@@ -27,7 +27,7 @@ extension ToolAgent {
         case "html_entities":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             let unescape = (arg("mode") ?? "escape").lowercased() == "unescape"
-            return (unescape ? HTMLEntities.unescape(text) : HTMLEntities.escape(text), [])
+            return (unescape ? Fathom.HTMLEntities.unescape(text) : Fathom.HTMLEntities.escape(text), [])
 
         case "url_encode":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }

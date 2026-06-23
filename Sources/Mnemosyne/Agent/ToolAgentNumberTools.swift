@@ -38,12 +38,12 @@ extension ToolAgent {
             let nums = NumberStats.parse(data)
             guard !nums.isEmpty else { return ("Couldn't parse any numbers from the data.", []) }
             if let valueStr = arg("value"), let target = Double(valueStr) {
-                guard let z = ZScore.score(of: target, in: nums) else {
+                guard let z = Fathom.Series.zScore(of: target, in: nums) else {
                     return ("Can't compute a z-score — the numbers have zero spread (all identical).", [])
                 }
                 return ("z = \(Quartiles.fmt((z * 1000).rounded() / 1000)) for \(Quartiles.fmt(target)) (n=\(nums.count)).", [])
             }
-            guard let zs = ZScore.standardize(nums) else {
+            guard let zs = Fathom.Series.standardize(nums) else {
                 return ("Can't standardize — the numbers have zero spread (all identical).", [])
             }
             let list = zs.map { Quartiles.fmt(($0 * 100).rounded() / 100) }.joined(separator: ", ")
@@ -89,10 +89,10 @@ extension ToolAgent {
             guard x.count == y.count else {
                 return ("x has \(x.count) numbers but y has \(y.count) — the two lists must be the same length.", [])
             }
-            guard let r = Correlation.pearson(x, y) else {
+            guard let r = Fathom.Series.correlation(x, y) else {
                 return ("Need at least 2 paired numbers, and neither list can be constant (flat).", [])
             }
-            return ("r = \(Quartiles.fmt((r * 1000).rounded() / 1000)) (\(Correlation.describe(r)), n=\(x.count))", [])
+            return ("r = \(Quartiles.fmt((r * 1000).rounded() / 1000)) (\(Fathom.Series.describe(r)), n=\(x.count))", [])
 
         case "moving_average":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (numbers).", []) }
