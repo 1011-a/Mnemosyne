@@ -1,0 +1,15 @@
+{
+  "originHash" : "cb7b1e7180d47440e8ae0571ed19dd43402c240a81152291a9b411c81f018396",
+  "pins" : [
+    {
+      "identity" : "fathom",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/paean-ai/Fathom.git",
+      "state" : {
+        "revision" : "464613e71298e7af34b7683be54884c3cf88a209",
+        "version" : "1.5.0"
+      }
+    }
+  ],
+  "version" : 3
+}

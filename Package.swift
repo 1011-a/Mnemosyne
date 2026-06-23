@@ -10,10 +10,8 @@ let package = Package(
         .executable(name: "Mnemosyne", targets: ["Mnemosyne"])
     ],
     dependencies: [
-        // The top-level agent harness. Pinned to a LOCAL checkout during the SDK migration so the
-        // app and Fathom can evolve together without a push/tag round-trip; switched back to the
-        // published github.com/paean-ai/Fathom URL once the migration settles.
-        .package(path: "../Fathom")
+        // The top-level agent harness — the generic value-in/value-out tools live here, single-sourced.
+        .package(url: "https://github.com/paean-ai/Fathom.git", from: "1.5.0")
     ],
     targets: [
         .executableTarget(
