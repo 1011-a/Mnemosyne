@@ -17,12 +17,12 @@ extension ToolAgent {
         case "base64":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
             if (arg("mode") ?? "encode").lowercased() == "decode" {
-                guard let decoded = Base64Util.decode(text) else {
+                guard let decoded = Fathom.Base64.decode(text) else {
                     return ("That isn't valid base64 (or the bytes aren't UTF-8 text).", [])
                 }
                 return (decoded, [])
             }
-            return (Base64Util.encode(text), [])
+            return (Fathom.Base64.encode(text), [])
 
         case "html_entities":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
