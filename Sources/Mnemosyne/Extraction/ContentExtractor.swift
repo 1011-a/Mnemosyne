@@ -51,7 +51,7 @@ struct ContentExtractor: Sendable {
         case .pdf:                       return try await extractPDF(url)
         case .image:                     return try await extractImage(url)
         case .richtext, .html, .wordDoc: return try await extractAttributed(url, kind: kind)
-        case .audioTranscript:           return await AudioTranscriber.transcribe(url) ?? ""
+        case .audioTranscript:           return await AudioTranscriber.transcribeWithDeadline(url) ?? ""
         case .iwork:                     return try await extractIWork(url)
         case .email:                     return try EmailExtractor.extract(url)
         case .contact:                   return try VCardExtractor.extract(url)

@@ -13,6 +13,36 @@ import Speech
 ///    transcript captured SO FAR (partial results) rather than losing the whole file.
 enum AudioTranscriber {
 
+    /// Transcribe with an EXTERNAL hard deadline that does NOT depend on the recognizer behaving.
+    /// `transcribe` has its own internal timers, but a wedged `SFSpeechRecognizer` (seen in the
+    /// wild on some audio) can deadlock so those never fire — stalling ingest indefinitely. This
+    /// races `transcribe` against a wall-clock timer and returns nil if the timer wins, so one bad
+    /// file can never hang the whole run. The inner task is cancelled best-effort (and abandoned
+    /// if it ignores cancellation — harmless; ingest moves on).
+    static func transcribeWithDeadline(_ url: URL, deadline: TimeInterval = 100) async -> String? {
+        await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+            let once = OnceResume()
+            let work = Task { let r = await transcribe(url); once.fire { cont.resume(returning: r) } }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
+                work.cancel()
+                once.fire { cont.resume(returning: nil) }
+            }
+        }
+    }
+
+    /// Resume a continuation exactly once, whichever of the racing tasks finishes first.
+    private final class OnceResume: @unchecked Sendable {
+        private let lock = NSLock()
+        private var done = false
+        func fire(_ resume: () -> Void) {
+            lock.lock(); defer { lock.unlock() }
+            guard !done else { return }
+            done = true
+            resume()
+        }
+    }
+
     static func transcribe(_ url: URL, quietBail: TimeInterval = 15, maxTimeout: TimeInterval = 90) async -> String? {
         let status = await authorize()
         guard status == .authorized else { return nil }
