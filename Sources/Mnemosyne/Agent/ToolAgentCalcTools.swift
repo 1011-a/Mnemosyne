@@ -11,7 +11,7 @@ extension ToolAgent {
         switch name {
         case "number_bases":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
-            guard let described = NumberBases.describe(value) else {
+            guard let described = Fathom.NumberBases.describe(value) else {
                 return ("'\(value)' isn't a valid integer (try decimal or 0x/0b/0o-prefixed).", [])
             }
             return (described, [])
@@ -57,12 +57,12 @@ extension ToolAgent {
             guard let value = arg("value"), let n = Int(value.trimmingCharacters(in: .whitespaces)) else {
                 return ("Need an integer 'value'.", [])
             }
-            guard let words = NumberWords.spell(n) else { return ("That number is too large to spell out.", []) }
+            guard let words = Fathom.NumberWords.spell(n) else { return ("That number is too large to spell out.", []) }
             return ("\(n) = \(words)", [])
 
         case "number_format":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
-            guard let out = NumberFormat.grouped(value) else { return ("'\(value)' isn't a number.", []) }
+            guard let out = Fathom.NumberFormat.grouped(value) else { return ("'\(value)' isn't a number.", []) }
             return (out, [])
 
         case "ordinal":
