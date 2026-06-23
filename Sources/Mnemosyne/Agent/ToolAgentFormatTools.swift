@@ -11,7 +11,7 @@ extension ToolAgent {
         switch name {
         case "bar_chart":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (label: value pairs).", []) }
-            guard let chart = AsciiChart.render(data) else {
+            guard let chart = Fathom.AsciiChart.render(data) else {
                 return ("Couldn't parse any 'label: value' pairs from the data. Example: 'Jan: 8, Feb: 5'.", [])
             }
             return ("```\n\(chart)\n```", [])

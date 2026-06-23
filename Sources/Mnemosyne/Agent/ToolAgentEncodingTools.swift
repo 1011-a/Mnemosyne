@@ -44,7 +44,7 @@ extension ToolAgent {
 
         case "nato":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            guard let spelled = NatoPhonetic.spell(text) else { return ("Nothing to spell.", []) }
+            guard let spelled = Fathom.NatoPhonetic.spell(text) else { return ("Nothing to spell.", []) }
             return (spelled, [])
 
         case "vigenere":
@@ -58,10 +58,10 @@ extension ToolAgent {
 
         case "char_frequency":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let rows = CharFrequency.analyze(text)
+            let rows = Fathom.CharFrequency.analyze(text)
             guard !rows.isEmpty else { return ("No letters to analyze.", []) }
             let top = Swift.min(Swift.max(Int(arg("top") ?? "") ?? 26, 1), 26)
-            return ("```\n\(CharFrequency.table(rows, limit: top))\n```", [])
+            return ("```\n\(Fathom.CharFrequency.table(rows, limit: top))\n```", [])
 
         case "morse":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }

@@ -93,7 +93,7 @@ extension ToolAgent {
 
         case "color":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }
-            guard let out = ColorConvert.describe(value) else {
+            guard let out = Fathom.ColorConvert.describe(value) else {
                 return ("Couldn't parse '\(value)' as a color — use #RRGGBB, #RGB, or 'r,g,b' (0–255).", [])
             }
             return (out, [])
