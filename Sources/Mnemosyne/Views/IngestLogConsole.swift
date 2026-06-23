@@ -36,6 +36,7 @@ struct IngestLogConsole: View {
                         VStack(alignment: .leading, spacing: 3) {
                             ForEach(progress.log.suffix(60)) { line in
                                 HStack(alignment: .top, spacing: 8) {
+                                    Text(line.time).foregroundStyle(DS.ColorToken.textTertiary)
                                     Text(line.symbol).foregroundStyle(color(line.level))
                                         .frame(width: 10, alignment: .center)
                                     Text(line.text).foregroundStyle(DS.ColorToken.textSecondary)

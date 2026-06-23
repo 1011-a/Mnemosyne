@@ -13,6 +13,7 @@ import Observation
 struct IngestLogLine: Identifiable, Sendable {
     enum Level: Sendable { case work, added, skip, warn }
     let id: Int
+    let time: String   // "HH:mm:ss" — when this line was logged
     let symbol: String
     let text: String
     let level: Level
@@ -47,9 +48,17 @@ final class IngestProgress {
     /// when this returns to zero.
     private var activeJobs = 0
 
+    /// Wall-clock formatter for log timestamps (HH:mm:ss), made once and reused.
+    private static let logTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
     func appendLog(_ symbol: String, _ text: String, _ level: IngestLogLine.Level) {
         logSeq += 1
-        log.append(IngestLogLine(id: logSeq, symbol: symbol, text: text, level: level))
+        let time = Self.logTimeFormatter.string(from: Date())
+        log.append(IngestLogLine(id: logSeq, time: time, symbol: symbol, text: text, level: level))
         if log.count > 160 { log.removeFirst(log.count - 160) }
     }
 
