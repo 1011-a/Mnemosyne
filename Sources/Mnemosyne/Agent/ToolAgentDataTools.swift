@@ -1,4 +1,5 @@
 import Foundation
+import Fathom
 
 /// JSON-string / list / date / markdown utility tool handlers, extracted from `ToolAgent`'s main
 /// `handleTool` switch to keep that file focused. Pure value-in/value-out (no store/network/UI;
@@ -50,7 +51,7 @@ extension ToolAgent {
 
         case "strip_markdown":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let plain = MarkdownStripper.strip(text).trimmingCharacters(in: .whitespacesAndNewlines)
+            let plain = Fathom.MarkdownStripper.strip(text).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !plain.isEmpty else { return ("Nothing left after stripping markdown.", []) }
             return (plain, [])
 

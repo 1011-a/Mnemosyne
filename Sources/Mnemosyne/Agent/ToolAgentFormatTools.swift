@@ -34,20 +34,20 @@ extension ToolAgent {
 
         case "slugify":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            let slug = Slugifier.slugify(text)
+            let slug = Fathom.Slugifier.slugify(text)
             guard !slug.isEmpty else { return ("'\(text)' has no slug-able characters (try a title with letters/digits).", []) }
             return (slug, [])
 
         case "make_checklist":
             guard let data = arg("data"), !data.isEmpty else { return ("Missing 'data' (a list of items).", []) }
-            guard let checklist = ChecklistBuilder.build(data) else {
+            guard let checklist = Fathom.ChecklistBuilder.build(data) else {
                 return ("No items to turn into a checklist. Pass items one per line.", [])
             }
             return (checklist, [])
 
         case "format_list":
             guard let text = arg("text"), !text.isEmpty else { return ("Missing 'text'.", []) }
-            guard let style = arg("style"), let out = ListFormatter.format(text, style: style) else {
+            guard let style = arg("style"), let out = Fathom.ListFormatter.format(text, style: style) else {
                 return ("Couldn't format the list. Use style 'numbered', 'bullet', 'comma', or 'and', with items one per line.", [])
             }
             return (out, [])

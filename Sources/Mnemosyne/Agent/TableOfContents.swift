@@ -1,4 +1,5 @@
 import Foundation
+import Fathom
 
 /// Builds a clickable markdown table of contents for the `generate_toc` tool — an indented
 /// list of `- [Heading](#anchor)` links from a document's headings. Combines `HeadingExtractor`
@@ -11,7 +12,7 @@ enum TableOfContents {
         let base = heads.map(\.level).min() ?? 1
         return heads.map { h in
             let indent = String(repeating: "  ", count: h.level - base)
-            return "\(indent)- [\(h.title)](#\(Slugifier.slugify(h.title)))"
+            return "\(indent)- [\(h.title)](#\(Fathom.Slugifier.slugify(h.title)))"
         }.joined(separator: "\n")
     }
 }
