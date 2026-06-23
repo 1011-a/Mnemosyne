@@ -96,6 +96,17 @@ extension ToolAgent {
             if d.added == 0 && d.removed == 0 { return ("No differences — the two texts are identical.", []) }
             return ("\(d.added) added, \(d.removed) removed:\n```\n\(d.lines.joined(separator: "\n"))\n```", [])
 
+        case "text_similarity":
+            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
+            let pct = Int((Similarity.jaccard(a, b) * 100).rounded())
+            return ("Similarity: \(pct)% (Jaccard word overlap).", [])
+
+        case "edit_distance":
+            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' strings.", []) }
+            let dist = Levenshtein.distance(a, b)
+            let pct = Int((Levenshtein.ratio(a, b) * 100).rounded())
+            return ("Edit distance: \(dist) (\(pct)% similar).", [])
+
         default:
             return nil
         }

@@ -2718,17 +2718,6 @@ struct ToolAgent: Sendable {
             }
             return ("```\n\(table)\n```", [])
 
-        case "text_similarity":
-            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' texts.", []) }
-            let pct = Int((Similarity.jaccard(a, b) * 100).rounded())
-            return ("Similarity: \(pct)% (Jaccard word overlap).", [])
-
-        case "edit_distance":
-            guard let a = arg("a"), let b = arg("b") else { return ("Need 'a' and 'b' strings.", []) }
-            let dist = Levenshtein.distance(a, b)
-            let pct = Int((Levenshtein.ratio(a, b) * 100).rounded())
-            return ("Edit distance: \(dist) (\(pct)% similar).", [])
-
         case "extract_action_items":
             guard let ref = arg("item") else { return ("Missing 'item'.", []) }
             let matches = await resolveItems(ref)
