@@ -1,24 +1,36 @@
 import Foundation
 import AppKit
+import Fathom
 
 /// Artifact tool handlers (build / list / read / export / open), extracted from `ToolAgent`'s main
-/// `handleTool` switch to keep that file focused. Unlike the pure value-in/value-out tools, these
-/// are store/network/UI-coupled — `create_artifact` grounds the build in the user's files and drives
-/// the DeepSeek/Codex/Claude build engines — so they live in an `extension ToolAgent` (full access to
-/// `store`, `embedder`, `deepSeek`, `buildEngine`) rather than migrating to Fathom. `handleArtifactTool`
-/// returns nil when `name` isn't one of these, letting the caller fall through.
+/// `handleTool` switch to keep that file focused. `create_artifact` is the agent's general "produce a
+/// deliverable by writing & running code" capability: it grounds the build in the user's files and
+/// runs a **Fathom-native coding agent** (Fathom.Orchestrator + a sandboxed FileSandbox.codingTools
+/// loop driven by the app's DeepSeek client) in a fresh working directory — no third-party agent CLI.
+/// They live in an `extension ToolAgent` (full access to `store`, `embedder`, `deepSeek`).
+/// `handleArtifactTool` returns nil when `name` isn't one of these, letting the caller fall through.
 extension ToolAgent {
+    /// System prompt for the Fathom-native build agent (file + sandboxed-shell tools).
+    static let artifactBuilderSystemPrompt = """
+    You are a BUILD AGENT working in a sandboxed working directory. You have tools to read, write, and \
+    edit files, to list/glob/grep, and to run shell commands. The shell has NO network access and can \
+    only write inside this working directory, so do not try to install packages or fetch anything.
+
+    Produce the requested DELIVERABLE as real files in the working directory:
+    - Ground all content ONLY in the provided CONTEXT from the user's knowledge base — do not invent facts.
+    - Make it polished and self-contained. For HTML, inline all CSS/JS (no external assets — there is no network).
+    - If a PDF is requested: write the document as a self-contained HTML file, then render it to PDF with \
+      `cupsfilter <file>.html > <file>.pdf` (works offline on macOS). Confirm the .pdf file exists afterward.
+    - Keep working until the deliverable files exist on disk; do not ask the user questions. \
+    When finished, briefly state what you built and name the main file.
+    """
+
     func handleArtifactTool(_ name: String, args: String,
                             onStatus: @Sendable @escaping (String) -> Void) async -> (String, [Citation])? {
         func arg(_ k: String) -> String? { Self.stringArg(args, k) }
         switch name {
         case "create_artifact":
             guard let task = arg("task") else { return ("Missing 'task'.", []) }
-            // DeepSeek-native by default (no CLI). If a CLI engine is chosen, try it,
-            // then the other CLI, then DeepSeek as a guaranteed fallback.
-            let order = Self.buildOrder(preferred: buildEngine,
-                                        claudeAvailable: ClaudeCodeClient.isAvailable,
-                                        codexAvailable: CodexCliClient.isAvailable)
             // Ground the build in the user's own files.
             let hits = (try? await store.search(vector: embedder.embed(task), queryText: task,
                                                 k: 6, keywordWeight: keywordWeight)) ?? []
@@ -45,52 +57,37 @@ extension ToolAgent {
             func filesNow() -> [String] {
                 ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
             }
-            func mtimes() -> [String: Date] {
-                var m: [String: Date] = [:]
-                for f in filesNow() {
-                    m[f] = (try? FileManager.default.attributesOfItem(atPath: dir + "/" + f))?[.modificationDate] as? Date
-                }
-                return m
-            }
-            let baseline = revisedTitle != nil ? mtimes() : [:]
-            // Success: a fresh build produced files; a revision changed/added one.
-            func produced() -> Bool {
-                let now = mtimes()
-                if revisedTitle == nil { return !now.isEmpty }
-                for (f, m) in now where baseline[f] == nil || m > (baseline[f] ?? .distantPast) { return true }
-                return false
-            }
-            let buildTask = revisedTitle != nil ? "REVISE the existing files here (read them first): \(task)" : task
+            let baseline = Set(filesNow())
 
-            var used: String?
-            for engine in order {
-                onStatus("Building with \(engine.label): \(task)…")
-                switch engine {
-                case .deepseek:
-                    // Native multi-file developer build (Claude Code-style). Falls back
-                    // to a single self-contained HTML page if the manifest build yields nothing.
-                    let built = await DeepSeekBuilder(deepSeek: deepSeek)
-                        .build(task: buildTask, context: context, workdir: dir, onStatus: onStatus)
-                    if built.isEmpty, let html = await deepSeekBuildHTML(task: buildTask, context: context) {
-                        try? html.write(toFile: dir + "/index.html", atomically: true, encoding: .utf8)
-                    }
-                case .codex:
-                    _ = await CodexCliClient.createArtifact(task: buildTask, context: context, workdir: dir)
-                case .claude:
-                    _ = await ClaudeCodeClient.createArtifact(task: buildTask, context: context, workdir: dir)
-                }
-                if produced() { used = engine.label; break }
-                if order.count > 1 { onStatus("\(engine.label) produced nothing — trying the next build agent…") }
-            }
-            guard produced(), let used else {
-                return ("Couldn't build it — every build agent failed (possibly all rate-limited). Try again later.", [])
+            // Native coding agent: a sandboxed Fathom Orchestrator loop (no network; writes confined
+            // to `dir`) driven by the app's DeepSeek client. It writes & runs code to build the deliverable.
+            let buildTask = revisedTitle != nil ? "REVISE the existing files in this directory (read them first): \(task)" : task
+            onStatus("Building: \(task)…")
+            let sandbox = Fathom.FileSandbox(root: URL(fileURLWithPath: dir))
+            let orchestrator = Fathom.Orchestrator(
+                client: AgentLLMClient(deepSeek: deepSeek, temperature: 0.4),
+                maxRounds: 16, onStatus: { onStatus($0) }, planning: true)
+            let query = """
+            Deliverable: \(buildTask)
+
+            CONTEXT from the user's knowledge base (ground in this; do not invent):
+            \(context)
+            """
+            _ = try? await orchestrator.run(systemPrompt: Self.artifactBuilderSystemPrompt,
+                                            query: query,
+                                            tools: sandbox.codingTools(commandTimeout: 180, sandboxed: true))
+
+            // Success = new or changed files on disk (the build agent's summary text is incidental).
+            let files = filesNow()
+            let produced = revisedTitle == nil ? !files.isEmpty : Set(files) != baseline || !files.isEmpty
+            guard produced else {
+                return ("Couldn't build it — the build agent produced no files. Try rephrasing the request.", [])
             }
             // A revision invalidates the cached preview so the gallery re-renders it.
             if revisedTitle != nil { try? FileManager.default.removeItem(atPath: dir + "/.thumbnail.png") }
             await MainActor.run { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: dir)]) }
-            let files = filesNow()
             let verb = revisedTitle.map { "Revised '\($0)'" } ?? "Built \(files.count) file(s)"
-            return ("\(verb) with \(used) — \(files.joined(separator: ", ")) — in \(dir). Revealed in Finder.", [])
+            return ("\(verb) — \(files.joined(separator: ", ")) — in \(dir). Revealed in Finder.", [])
 
         case "list_recent_artifacts":
             let limit = Int(arg("limit") ?? "") ?? 8

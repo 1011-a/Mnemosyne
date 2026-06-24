@@ -374,6 +374,11 @@ struct ToolAgent: Sendable {
     SAFETY: destructive / bulk actions are two-step — delete_item, tag_search_results, batch_tag, merge_tags, and \
     auto_label_untagged first PREVIEW (call without confirm/apply). Relay the preview, get the user's explicit \
     "yes", then call again with confirm=true / apply=true. Never mutate on a vague request.
+    DELIVERABLES: when the user asks you to WRITE / MAKE / BUILD / GENERATE / CREATE (写 / 做 / 生成) something \
+    that yields a file or long-form output — a book, document, PDF, report, analysis, chart, slides, web page, \
+    app — call create_artifact with the full request as `task`. It runs a sandboxed coding agent that writes & \
+    runs code to produce real files. Do this in ONE create_artifact call; do NOT try to assemble the deliverable \
+    yourself with get_item/search (that wastes steps and produces nothing). Gather context first only if needed.
     BEST PRACTICE: don't repeat a tool call you already made; if two steps find nothing new, answer with what \
     you have and be honest about gaps. Use calculate for any arithmetic. When the user states a durable fact \
     about themselves, offer to pin_fact it.
