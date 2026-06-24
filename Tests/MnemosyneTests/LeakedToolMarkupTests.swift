@@ -43,4 +43,21 @@ final class LeakedToolMarkupTests: XCTestCase {
         XCTAssertNil(ToolAgent.leakedToolMarkupStart("totally clean prose [1]"))
         XCTAssertNotNil(ToolAgent.leakedToolMarkupStart("oops <tool_calls>"))
     }
+
+    func testPipeDelimitedAntmlStylePrefix() {
+        // Mirrors the on-screen leak: a pipe-wrapped namespace prefix between '<' and the keyword.
+        let s = "书已写好。\n<|tool_calls|><|invoke name=\"get_item\"><|parameter name=\"item\">从莒县到世界</parameter>"
+        XCTAssertEqual(ToolAgent.stripLeakedToolMarkup(s), "书已写好。")
+    }
+
+    func testDeepSeekNativeFullwidthPipeTokens() {
+        // DeepSeek's native tool-call special tokens use full-width '｜' and the '▁' block.
+        let s = "完成。<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>get_item"
+        XCTAssertEqual(ToolAgent.stripLeakedToolMarkup(s), "完成。")
+    }
+
+    func testChatMLSingularToolCall() {
+        let s = "Here you go.\n<tool_call>{\"name\":\"get_item\"}</tool_call>"
+        XCTAssertEqual(ToolAgent.stripLeakedToolMarkup(s), "Here you go.")
+    }
 }

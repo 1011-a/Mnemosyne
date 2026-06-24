@@ -77,12 +77,18 @@ struct ToolAgent: Sendable {
     static let leakedToolMarkupHoldback = 24
 
     /// Earliest index where leaked tool-call / function-call markup begins, or nil if the text is
-    /// clean. Tolerates any namespace prefix (e.g. `antml:`).
+    /// clean. Models leak tool calls into prose in several dialects, so the matcher is deliberately
+    /// broad: an opening `<` followed (within a short run of separator/namespace chars — ASCII or
+    /// DeepSeek's full-width `｜` / `▁`, an `antml:`-style prefix, etc.) by one of the tool-call
+    /// keywords. Covers Anthropic `<invoke>/<parameter>/<function_calls>`, ChatML/Hermes
+    /// `<tool_call>`, and DeepSeek's native `<｜tool▁calls▁begin｜>` tokens.
     static func leakedToolMarkupStart(_ text: String) -> String.Index? {
-        let openings = [#"<[A-Za-z_]*:?function_calls\b"#, #"<[A-Za-z_]*:?invoke\b"#,
-                        #"<[A-Za-z_]*:?tool_calls\b"#, #"<[A-Za-z_]*:?parameter\b"#]
+        let prefix = #"[\|｜▁:_\sA-Za-z]{0,16}"#   // separators / namespace between '<' and the keyword
+        let keywords = ["tool[_▁]?calls?", "tool[_▁]?call", "function[_▁]?calls?",
+                        "invoke", "parameter"]
         var cut: String.Index? = nil
-        for pat in openings {
+        for kw in keywords {
+            let pat = "<" + prefix + kw + #"\b"#
             if let r = text.range(of: pat, options: [.regularExpression, .caseInsensitive]),
                cut == nil || r.lowerBound < cut! { cut = r.lowerBound }
         }
