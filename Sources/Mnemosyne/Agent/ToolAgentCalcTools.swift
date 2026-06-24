@@ -4,7 +4,8 @@ import Fathom
 /// Calculator / unit-conversion / finance / validation tool handlers, extracted from `ToolAgent`'s
 /// main `handleTool` switch to keep that file focused. Pure value-in/value-out (no store/network/
 /// UI). `handleCalcTool` returns nil when `name` isn't one of these, letting the caller fall
-/// through. (These map 1:1 to Fathom built-in tools as the migration lands.)
+/// through. Most map 1:1 to Fathom built-in tools; a few (`calculate`, `unit_convert`, the finance
+/// helpers) have no Fathom equivalent and stay backed by app-local pure helpers.
 extension ToolAgent {
     func handleCalcTool(_ name: String, args: String) -> (String, [Citation])? {
         func arg(_ k: String) -> String? { Self.stringArg(args, k) }
@@ -25,6 +26,22 @@ extension ToolAgent {
                 return ("Couldn't convert — bases must be 2–36 and '\(value)' valid in base \(from).", [])
             }
             return ("\(value) (base \(from)) = \(out) (base \(to))", [])
+
+        case "calculate":
+            guard let expr = arg("expression")?.trimmingCharacters(in: .whitespacesAndNewlines), !expr.isEmpty
+            else { return ("Missing 'expression'.", []) }
+            guard let v = Calculator.eval(expr) else {
+                return ("Couldn't evaluate '\(expr)' — check the expression (only + - * / % ^ and parentheses).", [])
+            }
+            return ("\(expr) = \(Calculator.format(v))", [])
+
+        case "unit_convert":
+            guard let vs = arg("value"), let v = Double(vs),
+                  let from = arg("from"), let to = arg("to") else { return ("Missing 'value', 'from', or 'to'.", []) }
+            guard let r = UnitConvert.convert(v, from: from, to: to) else {
+                return ("Can't convert '\(from)' to '\(to)' — unknown units or different dimensions.", [])
+            }
+            return ("\(Calculator.format(v)) \(from) = \(Calculator.format(r)) \(to)", [])
 
         case "roman_numeral":
             guard let value = arg("value"), !value.isEmpty else { return ("Missing 'value'.", []) }

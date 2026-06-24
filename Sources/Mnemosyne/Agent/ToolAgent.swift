@@ -3317,22 +3317,6 @@ struct ToolAgent: Sendable {
             // Delegate the formatting to Fathom's built-in datetime renderer.
             return ("Current local date and time: \(Fathom.CurrentDateTimeTool.render(Date(), style: .human)).", [])
 
-        case "calculate":
-            guard let expr = arg("expression")?.trimmingCharacters(in: .whitespacesAndNewlines), !expr.isEmpty
-            else { return ("Missing 'expression'.", []) }
-            guard let v = Calculator.eval(expr) else {
-                return ("Couldn't evaluate '\(expr)' — check the expression (only + - * / % ^ and parentheses).", [])
-            }
-            return ("\(expr) = \(Calculator.format(v))", [])
-
-        case "unit_convert":
-            guard let vs = arg("value"), let v = Double(vs),
-                  let from = arg("from"), let to = arg("to") else { return ("Missing 'value', 'from', or 'to'.", []) }
-            guard let r = UnitConvert.convert(v, from: from, to: to) else {
-                return ("Can't convert '\(from)' to '\(to)' — unknown units or different dimensions.", [])
-            }
-            return ("\(Calculator.format(v)) \(from) = \(Calculator.format(r)) \(to)", [])
-
         case "translate":
             guard let text = arg("text")?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty,
                   let to = arg("to")?.trimmingCharacters(in: .whitespacesAndNewlines), !to.isEmpty
