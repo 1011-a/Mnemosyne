@@ -11,9 +11,7 @@ let package = Package(
     ],
     dependencies: [
         // The top-level agent harness — the generic value-in/value-out tools live here, single-sourced.
-        // Local path dep during the native-coding-builder work (Fathom 1.9.0, unpublished); switch back
-        // to the versioned github.com/paean-ai/Fathom dep once 1.9.0 is published.
-        .package(path: "../Fathom")
+        .package(url: "https://github.com/paean-ai/Fathom.git", from: "1.9.0")
     ],
     targets: [
         .executableTarget(
