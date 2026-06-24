@@ -3196,44 +3196,6 @@ struct ToolAgent: Sendable {
             // Delegate the formatting to Fathom's built-in datetime renderer.
             return ("Current local date and time: \(Fathom.CurrentDateTimeTool.render(Date(), style: .human)).", [])
 
-        case "translate":
-            guard let text = arg("text")?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty,
-                  let to = arg("to")?.trimmingCharacters(in: .whitespacesAndNewlines), !to.isEmpty
-            else { return ("Missing 'text' or 'to'.", []) }
-            onStatus("Translating to \(to)…")
-            let body: [String: Any] = ["model": deepSeek.config.deepSeekModel,
-                                       "messages": [["role": "system", "content": Self.translatePrompt(to: to)],
-                                                    ["role": "user", "content": text]],
-                                       "temperature": SamplingPreset.temperature(for: .translation), "tool_choice": "none"]
-            guard let data = try? await deepSeek.rawChat(body: JSONSerialization.data(withJSONObject: body)),
-                  let resp = try? JSONDecoder().decode(ChatResponse.self, from: data),
-                  let translated = resp.choices.first?.message.content, !translated.isEmpty else {
-                return ("Couldn't translate that right now.", [])
-            }
-            return ("Translation (\(to)):\n\(translated)", [])
-
-        case "translate_item":
-            guard let ref = arg("item"),
-                  let to = arg("to")?.trimmingCharacters(in: .whitespacesAndNewlines), !to.isEmpty
-            else { return ("Missing 'item' or 'to'.", []) }
-            let matches = await resolveItems(ref)
-            guard matches.count == 1, let it = matches.first else { return (Self.ambiguity(matches, ref: ref), []) }
-            onStatus("Translating \(it.title) to \(to)…")
-            let text = String(((try? await store.chunkTexts(forItem: it.id)) ?? []).joined(separator: "\n").prefix(6000))
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return ("'\(it.title)' has no readable text to translate.", [])
-            }
-            let body: [String: Any] = ["model": deepSeek.config.deepSeekModel,
-                                       "messages": [["role": "system", "content": Self.translatePrompt(to: to)],
-                                                    ["role": "user", "content": text]],
-                                       "temperature": SamplingPreset.temperature(for: .translation), "tool_choice": "none"]
-            guard let data = try? await deepSeek.rawChat(body: JSONSerialization.data(withJSONObject: body)),
-                  let resp = try? JSONDecoder().decode(ChatResponse.self, from: data),
-                  let translated = resp.choices.first?.message.content, !translated.isEmpty else {
-                return ("Couldn't translate '\(it.title)' right now.", [])
-            }
-            return ("'\(it.title)' translated to \(to):\n\(translated)", [])
-
         case "compare_items":
             guard let refA = arg("item_a"), let refB = arg("item_b") else { return ("Missing 'item_a' or 'item_b'.", []) }
             let ma = await resolveItems(refA), mb = await resolveItems(refB)
@@ -3342,6 +3304,7 @@ struct ToolAgent: Sendable {
             // Store/UI-coupled domain groups also live in focused files (async).
             if let result = await handleArtifactTool(name, args: args, onStatus: onStatus) { return result }
             if let result = await handleSavedSearchTool(name, args: args, citationOffset: citationOffset, onStatus: onStatus) { return result }
+            if let result = await handleTranslateTool(name, args: args, onStatus: onStatus) { return result }
             return ("Unknown tool '\(name)'.", [])
         }
     }
