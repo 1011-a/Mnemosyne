@@ -1741,7 +1741,7 @@ struct ToolAgent: Sendable {
     }
 
     /// Turn hits into a numbered tool-result string and matching citations.
-    private func render(_ hits: [RetrievedChunk], startingAt offset: Int) -> (String, [Citation]) {
+    func render(_ hits: [RetrievedChunk], startingAt offset: Int) -> (String, [Citation]) {
         guard !hits.isEmpty else { return ("No matching sources found.", []) }
         var text = ""
         var cites: [Citation] = []
@@ -1775,47 +1775,6 @@ struct ToolAgent: Sendable {
             let tags = (try? await store.allTags()) ?? []
             return tags.isEmpty ? ("No labels yet.", [])
                 : (tags.map { "\($0.tag) (\($0.count))" }.joined(separator: ", "), [])
-
-        case "save_search":
-            guard let name = arg("name")?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
-                  let query = arg("query")?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty
-            else { return ("Missing 'name' or 'query'.", []) }
-            onStatus("Saving search '\(name)'…")
-            // Reuse an existing entry's id when the name matches, so re-saving updates it.
-            let existing = Self.matchSavedSearch(name, in: (try? await store.allSavedSearches()) ?? [])
-            let s = SavedSearch(id: existing?.id ?? UUID().uuidString, name: name, query: query, kinds: [], tag: nil)
-            do { try await store.saveSearch(s) } catch { return ("Couldn't save the search.", []) }
-            return ("Saved search '\(name)' → “\(query)”. Run it later with run_saved_search.", [])
-
-        case "list_saved_searches":
-            onStatus("Reading saved searches…")
-            let searches = (try? await store.allSavedSearches()) ?? []
-            guard !searches.isEmpty else { return ("You have no saved searches yet.", []) }
-            return ("\(searches.count) saved search(es):\n" +
-                    searches.map { "• \($0.name) → “\($0.query)”" }.joined(separator: "\n"), [])
-
-        case "run_saved_search":
-            guard let ref = arg("search") else { return ("Missing 'search'.", []) }
-            let searches = (try? await store.allSavedSearches()) ?? []
-            guard let s = Self.matchSavedSearch(ref, in: searches) else {
-                return searches.isEmpty ? ("You have no saved searches yet.", [])
-                    : ("No saved search matches '\(ref)'. You have: \(searches.map(\.name).joined(separator: ", ")).", [])
-            }
-            onStatus("Running saved search '\(s.name)'…")
-            let hits = (try? await store.search(vector: embedder.embed(s.query), queryText: s.query,
-                                                k: topK, keywordWeight: keywordWeight)) ?? []
-            guard !hits.isEmpty else { return ("Saved search '\(s.name)' (“\(s.query)”) matched nothing.", []) }
-            return render(hits, startingAt: citationOffset)
-
-        case "delete_saved_search":
-            guard let ref = arg("search") else { return ("Missing 'search'.", []) }
-            let searches = (try? await store.allSavedSearches()) ?? []
-            guard let s = Self.matchSavedSearch(ref, in: searches) else {
-                return ("No saved search matches '\(ref)'.", [])
-            }
-            onStatus("Deleting saved search '\(s.name)'…")
-            do { try await store.deleteSavedSearch(id: s.id) } catch { return ("Couldn't delete it.", []) }
-            return ("Deleted saved search '\(s.name)'.", [])
 
         case "search_conversations":
             guard let q = arg("query")?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty
@@ -3382,6 +3341,7 @@ struct ToolAgent: Sendable {
             if let result = handleFormatTool(name, args: args) { return result }
             // Store/UI-coupled domain groups also live in focused files (async).
             if let result = await handleArtifactTool(name, args: args, onStatus: onStatus) { return result }
+            if let result = await handleSavedSearchTool(name, args: args, citationOffset: citationOffset, onStatus: onStatus) { return result }
             return ("Unknown tool '\(name)'.", [])
         }
     }
@@ -3436,14 +3396,14 @@ struct ToolAgent: Sendable {
 
     /// Resolve a file reference (title or distinctive substring) to matching items —
     /// exact title first, otherwise a case-insensitive substring match.
-    private func resolveItems(_ ref: String) async -> [KnowledgeItem] {
+    func resolveItems(_ ref: String) async -> [KnowledgeItem] {
         let items = (try? await store.allItems()) ?? []
         let r = ref.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let exact = items.filter { $0.title.lowercased() == r }
         return exact.isEmpty ? items.filter { $0.title.lowercased().contains(r) } : exact
     }
 
-    private static func ambiguity(_ matches: [KnowledgeItem], ref: String) -> String {
+    static func ambiguity(_ matches: [KnowledgeItem], ref: String) -> String {
         matches.isEmpty
             ? "No file matches '\(ref)'."
             : "Several files match '\(ref)': " + matches.prefix(10).map(\.title).joined(separator: "; ") + ". Which one?"
