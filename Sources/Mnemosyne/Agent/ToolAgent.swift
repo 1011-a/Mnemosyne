@@ -58,6 +58,46 @@ struct ToolAgent: Sendable {
     • "OK" — if the gathered evidence is sufficient to answer accurately.
     """
 
+    /// Appended just before the final answer so the model leaves tool-calling mode and
+    /// writes prose. Without it, deepseek-chat — handed a tool-heavy transcript (and often
+    /// stopped mid-gather at the step limit) with `tool_choice:none` but no other steer —
+    /// keeps trying to call tools; with no tool channel open those calls spill into the
+    /// answer as literal `<invoke>/<parameter>/<tool_calls>` markup.
+    static let finalAnswerDirective = """
+    You now have all the information you're going to get. STOP using tools: do not emit any \
+    tool call or function-call markup of any kind — no <tool_calls>, <invoke>, <parameter>, \
+    or function-call JSON. Write your COMPLETE final answer to the user as plain prose \
+    (Markdown is fine), grounded in the evidence above and citing sources by their [n] markers. \
+    If you couldn't finish everything, say so in one short sentence and answer with what you have.
+    """
+
+    /// Longest leaked-markup opening tag we recognise (with a namespace prefix like `antml:`),
+    /// in characters — the streaming guard holds back this many trailing chars so a tag split
+    /// across token boundaries can't slip out before it's recognised.
+    static let leakedToolMarkupHoldback = 24
+
+    /// Earliest index where leaked tool-call / function-call markup begins, or nil if the text is
+    /// clean. Tolerates any namespace prefix (e.g. `antml:`).
+    static func leakedToolMarkupStart(_ text: String) -> String.Index? {
+        let openings = [#"<[A-Za-z_]*:?function_calls\b"#, #"<[A-Za-z_]*:?invoke\b"#,
+                        #"<[A-Za-z_]*:?tool_calls\b"#, #"<[A-Za-z_]*:?parameter\b"#]
+        var cut: String.Index? = nil
+        for pat in openings {
+            if let r = text.range(of: pat, options: [.regularExpression, .caseInsensitive]),
+               cut == nil || r.lowerBound < cut! { cut = r.lowerBound }
+        }
+        return cut
+    }
+
+    /// Defense-in-depth for the final answer: if the model still leaks tool-call / function-call
+    /// markup into its prose (despite tool_choice:none + the directive), cut from the first leaked
+    /// opening tag onward — a leak means it abandoned prose, so nothing after it is usable. Pure +
+    /// deterministic → unit-testable.
+    static func stripLeakedToolMarkup(_ text: String) -> String {
+        let cut = leakedToolMarkupStart(text) ?? text.endIndex
+        return String(text[..<cut]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Tools that change the knowledge base — used to skip the question-oriented
     /// critic/seed when the user asked for an action.
     static let mutationTools: Set<String> = [
@@ -1083,8 +1123,10 @@ struct ToolAgent: Sendable {
     }
 
     private func finalBody(_ convo: [[String: Any]], stream: Bool) -> [String: Any] {
-        ["model": deepSeek.config.deepSeekModel, "messages": convo,
-         "temperature": temperature, "tool_choice": "none", "stream": stream]
+        var c = convo
+        c.append(["role": "system", "content": Self.finalAnswerDirective])
+        return ["model": deepSeek.config.deepSeekModel, "messages": c,
+                "temperature": temperature, "tool_choice": "none", "stream": stream]
     }
 
     /// Non-streaming: run tool rounds, then generate the grounded answer.
@@ -1095,8 +1137,8 @@ struct ToolAgent: Sendable {
         let data = try await deepSeek.rawChat(
             body: JSONSerialization.data(withJSONObject: finalBody(phase.convo, stream: false)))
         let resp = try JSONDecoder().decode(ChatResponse.self, from: data)
-        return Answer(text: resp.choices.first?.message.content ?? "",
-                      citations: phase.citations, searches: phase.searches)
+        let text = Self.stripLeakedToolMarkup(resp.choices.first?.message.content ?? "")
+        return Answer(text: text, citations: phase.citations, searches: phase.searches)
     }
 
     /// Streaming: run tool rounds, surface citations, then stream the final answer
@@ -1119,10 +1161,44 @@ struct ToolAgent: Sendable {
                     onCitations(phase.citations)
                     onFinishNote(Self.finishTrace(phase.finish))
                     let body = try JSONSerialization.data(withJSONObject: finalBody(phase.convo, stream: true))
-                    for try await token in deepSeek.rawStream(body: body) {
-                        if Task.isCancelled { break }
-                        continuation.yield(token)
+                    // Guard the answer stream: hold back a short trailing buffer so a leaked tool-call
+                    // tag split across tokens is caught before it reaches the UI; if a leak appears,
+                    // emit the clean prefix and stop (mirrors stripLeakedToolMarkup for the non-streamed
+                    // path). Only `.answer` text is scrubbed — `.reasoning` (the thinking trace) passes
+                    // through untouched. Offsets are character counts (stable across `acc` mutations,
+                    // unlike String.Index); indices are recomputed fresh on the current `acc`.
+                    var acc = ""
+                    var emitted = 0
+                    var leaked = false
+                    func emitAnswer(_ lo: Int, _ hi: Int) {
+                        guard hi > lo else { return }
+                        let a = acc.index(acc.startIndex, offsetBy: lo)
+                        let b = acc.index(acc.startIndex, offsetBy: hi)
+                        continuation.yield(.answer(String(acc[a..<b])))
                     }
+                    for try await delta in deepSeek.rawStream(body: body) {
+                        if Task.isCancelled { break }
+                        switch delta {
+                        case .reasoning:
+                            continuation.yield(delta)
+                        case .answer(let chunk):
+                            acc += chunk
+                            if let cutIdx = Self.leakedToolMarkupStart(acc) {
+                                emitAnswer(emitted, acc.distance(from: acc.startIndex, to: cutIdx))
+                                emitted = acc.count
+                                leaked = true
+                            } else {
+                                let safe = Swift.max(emitted, acc.count - Self.leakedToolMarkupHoldback)
+                                emitAnswer(emitted, safe)
+                                emitted = Swift.max(emitted, safe)
+                            }
+                        }
+                        if leaked { break }
+                    }
+                    // Flush the held-back tail. No leak survived the loop (every chunk re-scanned the
+                    // full answer), so the tail is clean prose — yield it raw, without trimming, so a
+                    // space straddling the holdback boundary isn't lost.
+                    if !leaked, !Task.isCancelled { emitAnswer(emitted, acc.count) }
                     continuation.finish()
                 } catch { continuation.finish(throwing: error) }
             }
