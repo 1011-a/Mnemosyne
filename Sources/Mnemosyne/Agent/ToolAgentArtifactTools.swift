@@ -25,6 +25,21 @@ extension ToolAgent {
     When finished, briefly state what you built and name the main file.
     """
 
+    /// External end-state check for create_artifact (research: verify on the environment, not by
+    /// self-grading). Returns a feedback string describing what's still missing — no new files, or a
+    /// requested PDF absent — to feed into ONE grounded retry, or nil when the deliverable looks
+    /// complete. Pure → unit-testable.
+    static func artifactShortfall(files: [String], wantsPDF: Bool, baseline: Set<String>, revising: Bool) -> String? {
+        let producedSomething = revising ? (Set(files) != baseline) : !files.isEmpty
+        if !producedSomething {
+            return "The previous attempt wrote no new files to the working directory. Actually write the deliverable file(s) here now."
+        }
+        if wantsPDF, !files.contains(where: { $0.lowercased().hasSuffix(".pdf") }) {
+            return "A PDF was requested but none exists in the directory. Render the document to a .pdf (write the HTML, then run: cupsfilter <file>.html > <file>.pdf) and confirm the .pdf file exists."
+        }
+        return nil
+    }
+
     func handleArtifactTool(_ name: String, args: String,
                             onStatus: @Sendable @escaping (String) -> Void) async -> (String, [Citation])? {
         func arg(_ k: String) -> String? { Self.stringArg(args, k) }
@@ -62,22 +77,33 @@ extension ToolAgent {
             // Native coding agent: a sandboxed Fathom Orchestrator loop (no network; writes confined
             // to `dir`) driven by the app's DeepSeek client. It writes & runs code to build the deliverable.
             let buildTask = revisedTitle != nil ? "REVISE the existing files in this directory (read them first): \(task)" : task
-            onStatus("Building: \(task)…")
+            let wantsPDF = task.lowercased().contains("pdf")
             let sandbox = Fathom.FileSandbox(root: URL(fileURLWithPath: dir))
             let orchestrator = Fathom.Orchestrator(
                 client: AgentLLMClient(deepSeek: deepSeek, temperature: 0.4),
                 maxRounds: 16, onStatus: { onStatus($0) }, planning: true)
-            let query = """
-            Deliverable: \(buildTask)
+            func runBuild(_ note: String) async {
+                let query = """
+                Deliverable: \(buildTask)\(note.isEmpty ? "" : "\n\nIMPORTANT — fix this from the last attempt: \(note)")
 
-            CONTEXT from the user's knowledge base (ground in this; do not invent):
-            \(context)
-            """
-            _ = try? await orchestrator.run(systemPrompt: Self.artifactBuilderSystemPrompt,
-                                            query: query,
-                                            tools: sandbox.codingTools(commandTimeout: 180, sandboxed: true))
+                CONTEXT from the user's knowledge base (ground in this; do not invent):
+                \(context)
+                """
+                _ = try? await orchestrator.run(systemPrompt: Self.artifactBuilderSystemPrompt,
+                                                query: query,
+                                                tools: sandbox.codingTools(commandTimeout: 180, sandboxed: true))
+            }
 
-            // Success = new or changed files on disk (the build agent's summary text is incidental).
+            // End-state verification grounded in the filesystem (not self-grading): build, then if the
+            // deliverable is short (no new files, or a requested PDF missing) retry ONCE with the
+            // specific gap fed back — rounds 1–2 capture most recoverable gain (harness research).
+            onStatus("Building: \(task)…")
+            await runBuild("")
+            if let gap = Self.artifactShortfall(files: filesNow(), wantsPDF: wantsPDF, baseline: baseline, revising: revisedTitle != nil) {
+                onStatus("Refining the build…")
+                await runBuild(gap)
+            }
+
             let files = filesNow()
             let produced = revisedTitle == nil ? !files.isEmpty : Set(files) != baseline || !files.isEmpty
             guard produced else {
@@ -86,8 +112,10 @@ extension ToolAgent {
             // A revision invalidates the cached preview so the gallery re-renders it.
             if revisedTitle != nil { try? FileManager.default.removeItem(atPath: dir + "/.thumbnail.png") }
             await MainActor.run { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: dir)]) }
+            let pdfNote = (wantsPDF && !files.contains { $0.lowercased().hasSuffix(".pdf") })
+                ? " (couldn't render a PDF — the document files are in the folder)" : ""
             let verb = revisedTitle.map { "Revised '\($0)'" } ?? "Built \(files.count) file(s)"
-            return ("\(verb) — \(files.joined(separator: ", ")) — in \(dir). Revealed in Finder.", [])
+            return ("\(verb) — \(files.joined(separator: ", ")) — in \(dir). Revealed in Finder.\(pdfNote)", [])
 
         case "list_recent_artifacts":
             let limit = Int(arg("limit") ?? "") ?? 8
