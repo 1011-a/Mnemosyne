@@ -466,14 +466,16 @@ struct ToolAgent: Sendable {
         // Build the round client once. With no test override, wire the DeepSeek-native
         // reasoning sink so `deepseek-reasoner`'s chain-of-thought surfaces as a live
         // "thinking" line in the activity trace (a no-op for deepseek-chat, which has none).
-        let roundClient: any Fathom.LLMClient = llmOverride ?? AgentLLMClient(
+        // No test override ⇒ wrap in retry (survive a 429/timeout blip mid-loop); a mock override
+        // stays bare so tests run deterministically without retry semantics.
+        let roundClient: any Fathom.LLMClient = llmOverride ?? Self.retrying(AgentLLMClient(
             deepSeek: deepSeek, temperature: temperature,
             onReasoning: { reasoning in
                 if let snip = DeepSeekReasoning.snippet(reasoning) { onStatus("💭 " + snip) }
             },
             onUsage: { usage in
                 if let note = DeepSeekUsage.cacheNote(usage) { onStatus("⚡︎ " + note) }
-            })
+            }))
         // Loop-guard (Claude Code/Codex best practice): never run the SAME tool with
         // the SAME args twice in a turn — return the prior result and nudge the model
         // to do something different or answer. Stops wasted rounds + tool ping-pong.
@@ -1001,6 +1003,39 @@ struct ToolAgent: Sendable {
     /// Bound a single tool result fed back to the model, so one huge output (a long web
     /// page, a big file dump) can't blow up the agent's context window or cost — a Claude
     /// Code / Codex best practice. Keeps the head (where the answer usually is) and appends
+    /// True for transient LLM/transport failures worth retrying — HTTP 429 / 5xx and network
+    /// timeouts/drops. Permanent errors (missing key, other 4xx, decode failures) are NOT retried, so
+    /// a misconfigured key fails fast rather than looping. Pure → unit-testable.
+    static func isTransientLLMError(_ error: Error) -> Bool {
+        if let ce = error as? ClientError {
+            switch ce {
+            case .http(let code, _): return code == 429 || (500...599).contains(code)
+            case .missingDeepSeekKey, .decode: return false
+            }
+        }
+        if let u = error as? URLError {
+            switch u.code {
+            case .timedOut, .networkConnectionLost, .notConnectedToInternet,
+                 .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed: return true
+            default: return false
+            }
+        }
+        return false
+    }
+
+    /// Capped-exponential backoff between transient LLM retries: ~1s, 2s, 4s.
+    static func llmRetryBackoff(_ attempt: Int) async {
+        try? await Task.sleep(nanoseconds: UInt64(Swift.min(8, 1 << Swift.max(1, attempt))) * 500_000_000)
+    }
+
+    /// Wrap an agent LLM client in Fathom's RetryingClient with the transient classifier + backoff,
+    /// so the tool loop and builds survive a rate-limit/timeout blip instead of dying mid-run.
+    static func retrying(_ client: any Fathom.LLMClient) -> any Fathom.LLMClient {
+        Fathom.RetryingClient(wrapping: client, maxAttempts: 3,
+                              isRetryable: { isTransientLLMError($0) },
+                              backoff: { await llmRetryBackoff($0) })
+    }
+
     /// a clear truncation marker with the dropped character count, nudging the model to
     /// narrow its next step. Counted in Characters so multibyte text (CJK) is bounded too.
     /// Pure → unit-testable.

@@ -80,7 +80,7 @@ extension ToolAgent {
             let wantsPDF = task.lowercased().contains("pdf")
             let sandbox = Fathom.FileSandbox(root: URL(fileURLWithPath: dir))
             let orchestrator = Fathom.Orchestrator(
-                client: AgentLLMClient(deepSeek: deepSeek, temperature: 0.4),
+                client: Self.retrying(AgentLLMClient(deepSeek: deepSeek, temperature: 0.4)),
                 maxRounds: 16, onStatus: { onStatus($0) }, planning: true)
             func runBuild(_ note: String) async {
                 let query = """
