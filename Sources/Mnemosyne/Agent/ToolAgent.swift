@@ -525,7 +525,7 @@ struct ToolAgent: Sendable {
             // The model call for the ACT loop now flows through the Fathom
             // SDK's LLMClient — one place owns the wire format, and tests inject a mock.
             let completion = try await roundClient.complete(
-                messages: AgentLLMClient.messages(from: convo), tools: Self.tools())
+                messages: AgentLLMClient.messages(from: convo), tools: Self.modelFacingTools())
             guard completion.wantsTools else {
                 finish = .natural
                 break   // model is ready to answer — stop here, discard any draft content

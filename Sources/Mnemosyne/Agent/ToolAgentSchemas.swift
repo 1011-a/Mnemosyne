@@ -5,6 +5,41 @@ import Foundation
 /// Built fresh each call (a static `[String: Any]` isn't Sendable in Swift 6). The handlers these
 /// schemas describe live in the focused ToolAgent*Tools.swift files, dispatched by `handleTool`.
 extension ToolAgent {
+    /// Pure novelty / generic-utility tools NOT advertised to the model — ciphers, number-format,
+    /// encoders, and generic text/date manipulators that are irrelevant to a personal-knowledge agent.
+    /// Their handlers stay in the dispatcher (nothing breaks), they're just kept off the model's menu:
+    /// ~200 tools is far past where tool-selection holds up and bloats every call's context (harness
+    /// research — a curated minimal toolset improves reliability). Conservative + reversible: editing
+    /// this set re-advertises a tool. The knowledge-base, document-extraction, CSV/JSON, web, artifact,
+    /// and data-analysis tools all stay advertised.
+    static let unadvertisedTools: Set<String> = [
+        // ciphers / phonetics / novelty
+        "caesar", "vigenere", "morse", "nato", "roman_numeral", "anagram", "palindrome",
+        // number theory / base / spelling / format
+        "gcd_lcm", "factorize", "ordinal", "number_to_words", "number_bases", "convert_base", "number_format",
+        // encoders / hashing / url
+        "hash_text", "html_entities", "jwt_decode", "url_encode", "parse_url", "unicode_info",
+        // generic text manipulation (the model can do these inline)
+        "reverse", "case_style", "change_case", "headline_case", "slugify", "truncate", "wrap_text",
+        "reindent", "strip_markdown", "replace_text", "sort_lines", "count_text", "count_occurrences",
+        "compare_lists", "edit_distance", "text_similarity", "line_diff", "word_diff", "extract_between",
+        // generic date arithmetic
+        "weekday", "add_days", "date_diff",
+        // output-formatting helpers (answer in prose instead)
+        "format_list", "make_table", "make_checklist", "format_json",
+        // novelty charts (bar_chart/sparkline/histogram render ASCII — rarely the right move)
+        "bar_chart", "sparkline", "histogram", "tally",
+    ]
+
+    /// The tool schema actually shown to the model: the full catalogue minus `unadvertisedTools`.
+    /// Use this for model calls; `tools()` stays complete for dispatch + tests.
+    static func modelFacingTools() -> [[String: Any]] {
+        tools().filter { t in
+            guard let name = (t["function"] as? [String: Any])?["name"] as? String else { return true }
+            return !unadvertisedTools.contains(name)
+        }
+    }
+
     // Tools are built fresh each call — a static `[String: Any]` isn't Sendable in Swift 6.
     static func tools() -> [[String: Any]] {
         func tool(_ name: String, _ desc: String, _ props: [String: Any], required: [String] = []) -> [String: Any] {

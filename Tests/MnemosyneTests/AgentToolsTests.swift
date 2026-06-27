@@ -30,6 +30,22 @@ final class AgentToolsTests: XCTestCase {
         }
     }
 
+    func testModelFacingToolsTrimsNoveltyKeepsCore() {
+        let full = Set(ToolAgent.tools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String })
+        let advertised = Set(ToolAgent.modelFacingTools().compactMap { ($0["function"] as? [String: Any])?["name"] as? String })
+        XCTAssertLessThan(advertised.count, full.count, "the model-facing set is trimmed below the full catalogue")
+        // Niche/novelty tools are hidden from the model but remain in the full catalogue for dispatch.
+        for n in ["caesar", "roman_numeral", "slugify", "weekday", "gcd_lcm", "format_list"] {
+            XCTAssertFalse(advertised.contains(n), "\(n) should be unadvertised")
+            XCTAssertTrue(full.contains(n), "\(n) stays in the full catalogue")
+        }
+        // Core knowledge/agent tools stay advertised.
+        for n in ["search_knowledge", "create_artifact", "get_item", "add_tag", "library_stats",
+                  "web_search", "summarize_item", "extract_dates", "csv_sort"] {
+            XCTAssertTrue(advertised.contains(n), "\(n) must stay advertised")
+        }
+    }
+
     func testStringArgParsing() {
         XCTAssertEqual(ToolAgent.stringArg(#"{"tag":"work","item":"notes.txt"}"#, "tag"), "work")
         XCTAssertEqual(ToolAgent.stringArg(#"{"item":"notes.txt"}"#, "item"), "notes.txt")
