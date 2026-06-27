@@ -81,8 +81,14 @@ extension ToolAgent {
             let buildTask = revisedTitle != nil ? "REVISE the existing files in this directory (read them first): \(task)" : task
             let wantsPDF = task.lowercased().contains("pdf")
             let sandbox = Fathom.FileSandbox(root: URL(fileURLWithPath: dir))
+            // Builds run on the stronger "deep" tier (deepseek-v4-pro), not the default chat tier:
+            // create_artifact is a deliberate, infrequent action where build quality (planning + code)
+            // matters more than per-call cost. (deep_reason likewise uses v4-pro.)
+            let builderClient = AgentLLMClient(
+                deepSeek: DeepSeekClient(config: deepSeek.config.overriding(model: "deepseek-v4-pro")),
+                temperature: 0.4)
             let orchestrator = Fathom.Orchestrator(
-                client: Self.retrying(AgentLLMClient(deepSeek: deepSeek, temperature: 0.4)),
+                client: Self.retrying(builderClient),
                 maxRounds: 16, onStatus: { onStatus($0) }, planning: true)
             func runBuild(_ note: String) async {
                 let query = """
