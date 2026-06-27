@@ -249,7 +249,7 @@ struct SettingsStore: @unchecked Sendable {
 
     /// Which DeepSeek model the agent brain uses (chat vs reasoner).
     var model: String {
-        get { defaults.string(forKey: Key.model) ?? "deepseek-chat" }
+        get { defaults.string(forKey: Key.model) ?? "deepseek-v4-flash" }
         nonmutating set { defaults.set(newValue, forKey: Key.model) }
     }
 

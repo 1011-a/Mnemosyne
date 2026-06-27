@@ -13,7 +13,7 @@ struct ChatMessage: Codable, Sendable, Identifiable {
     var citations: [Citation] = []
     /// The DeepSeek model that produced an assistant turn (empty for user turns).
     var model: String = ""
-    /// The reasoner's thinking trace, if any (deepseek-reasoner only).
+    /// The reasoner's thinking trace, if any (deepseek-v4-pro only).
     var reasoning: String = ""
     /// A short note about HOW the agentic turn ended (e.g. hit the step limit) —
     /// in-memory only, shown subtly under the answer. Empty for clean finishes.

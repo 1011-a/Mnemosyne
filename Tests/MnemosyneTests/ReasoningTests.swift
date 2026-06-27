@@ -12,7 +12,7 @@ final class ReasoningTests: XCTestCase {
         let msgs = [
             ChatMessage(role: .user, content: "why?"),
             ChatMessage(role: .assistant, content: "Because [1].", citations: [],
-                        model: "deepseek-reasoner", reasoning: "Let me think step by step...")
+                        model: "deepseek-v4-pro", reasoning: "Let me think step by step...")
         ]
         try await store.saveMessages(msgs, threadID: "t")
 

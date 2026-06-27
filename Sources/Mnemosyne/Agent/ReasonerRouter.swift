@@ -1,7 +1,7 @@
 import Foundation
 
-/// Decides when a query is worth routing to DeepSeek's `deepseek-reasoner` (R1) instead of
-/// `deepseek-chat` — R1 spends extra tokens on an explicit chain-of-thought, which pays off for
+/// Decides when a query is worth routing to DeepSeek's `deepseek-v4-pro` (R1) instead of
+/// `deepseek-v4-flash` — R1 spends extra tokens on an explicit chain-of-thought, which pays off for
 /// analytical/multi-step questions but is wasteful for quick lookups. DeepSeek-only: the reasoner
 /// model has no OpenAI equivalent. Pure + deterministic → unit-testable. Pairs with the
 /// `deep_reason` tool and [[DeepSeekReasoning]].
@@ -18,7 +18,7 @@ enum ReasonerRouter {
     ]
 
     /// True when the query looks analytical enough to benefit from the reasoner: any reasoning
-    /// keyword/phrase, or a long (40+ word) prompt. Quick factual lookups stay on deepseek-chat.
+    /// keyword/phrase, or a long (40+ word) prompt. Quick factual lookups stay on deepseek-v4-flash.
     static func shouldUseReasoner(_ query: String) -> Bool {
         let q = query.lowercased()
         guard !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
@@ -31,7 +31,7 @@ enum ReasonerRouter {
     /// A short human-readable rationale for the routing decision (for the activity trace).
     static func rationale(_ query: String) -> String {
         shouldUseReasoner(query)
-            ? "Analytical/multi-step question — routing to deepseek-reasoner."
-            : "Straightforward question — deepseek-chat is sufficient."
+            ? "Analytical/multi-step question — routing to deepseek-v4-pro."
+            : "Straightforward question — deepseek-v4-flash is sufficient."
     }
 }

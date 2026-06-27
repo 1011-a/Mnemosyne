@@ -59,7 +59,7 @@ struct ToolAgent: Sendable {
     """
 
     /// Appended just before the final answer so the model leaves tool-calling mode and
-    /// writes prose. Without it, deepseek-chat — handed a tool-heavy transcript (and often
+    /// writes prose. Without it, deepseek-v4-flash — handed a tool-heavy transcript (and often
     /// stopped mid-gather at the step limit) with `tool_choice:none` but no other steer —
     /// keeps trying to call tools; with no tool channel open those calls spill into the
     /// answer as literal `<invoke>/<parameter>/<tool_calls>` markup.
@@ -495,8 +495,8 @@ struct ToolAgent: Sendable {
         // final state is corrected by a cheap classification pass after the loop.
         var toolRounds = 0
         // Build the round client once. With no test override, wire the DeepSeek-native
-        // reasoning sink so `deepseek-reasoner`'s chain-of-thought surfaces as a live
-        // "thinking" line in the activity trace (a no-op for deepseek-chat, which has none).
+        // reasoning sink so `deepseek-v4-pro`'s chain-of-thought surfaces as a live
+        // "thinking" line in the activity trace (a no-op for deepseek-v4-flash, which has none).
         // No test override ⇒ wrap in retry (survive a 429/timeout blip mid-loop); a mock override
         // stays bare so tests run deterministically without retry semantics.
         let roundClient: any Fathom.LLMClient = llmOverride ?? Self.retrying(AgentLLMClient(

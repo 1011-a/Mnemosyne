@@ -17,7 +17,7 @@ struct SettingsView: View {
     @State private var buildEngine: BuildEngine = .deepseek
     @State private var autoTag = true
     @State private var keywordWeight = 0.3
-    @State private var model = "deepseek-chat"
+    @State private var model = "deepseek-v4-flash"
     @State private var deepSeekKeyInput = ""
     @State private var deepSeekKeyMessage = ""
     @State private var serpApiKeyInput = ""
@@ -77,8 +77,8 @@ struct SettingsView: View {
                             .font(DS.Typo.caption).foregroundStyle(DS.ColorToken.textTertiary)
                     }
                     Picker("Model", selection: $model) {
-                        Text("deepseek-chat (fast)").tag("deepseek-chat")
-                        Text("deepseek-reasoner (deep)").tag("deepseek-reasoner")
+                        Text("deepseek-v4-flash (fast)").tag("deepseek-v4-flash")
+                        Text("deepseek-v4-pro (deep)").tag("deepseek-v4-pro")
                     }
                     .pickerStyle(.segmented)
                     .onChange(of: model) { _, v in services.settings.model = v }

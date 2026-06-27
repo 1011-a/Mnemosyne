@@ -31,7 +31,7 @@ struct DeepSeekClient: Sendable {
         req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
     }
 
-    /// DeepSeek-native: answer one question with `deepseek-reasoner` (R1), returning both the
+    /// DeepSeek-native: answer one question with `deepseek-v4-pro` (R1), returning both the
     /// answer and its `reasoning_content` chain-of-thought. No tools (the reasoner doesn't support
     /// function calling). Forces the reasoner model regardless of the configured default — used by
     /// the `deep_reason` tool when `ReasonerRouter` judges a query analytical.
@@ -39,7 +39,7 @@ struct DeepSeekClient: Sendable {
         var messages: [[String: Any]] = []
         if let system { messages.append(["role": "system", "content": system]) }
         messages.append(["role": "user", "content": question])
-        let body: [String: Any] = ["model": "deepseek-reasoner", "messages": messages]
+        let body: [String: Any] = ["model": "deepseek-v4-pro", "messages": messages]
         let data = try await rawChat(body: try JSONSerialization.data(withJSONObject: body))
         let answer = (try? JSONDecoder().decode(CompletionResponse.self, from: data))?.choices.first?.message.content ?? ""
         return (answer, DeepSeekReasoning.extract(from: data))

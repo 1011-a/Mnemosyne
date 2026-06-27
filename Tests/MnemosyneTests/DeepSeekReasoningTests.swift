@@ -13,7 +13,7 @@ final class DeepSeekReasoningTests: XCTestCase {
     }
 
     func testAbsentOrEmptyReasoningIsNil() {
-        // deepseek-chat: no reasoning_content field at all.
+        // deepseek-v4-flash: no reasoning_content field at all.
         XCTAssertNil(DeepSeekReasoning.extract(from: data(#"{"choices":[{"message":{"content":"hi"}}]}"#)))
         // present but blank.
         XCTAssertNil(DeepSeekReasoning.extract(from: data(#"{"choices":[{"message":{"reasoning_content":"   "}}]}"#)))

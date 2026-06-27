@@ -123,7 +123,7 @@ final class ChatViewModel {
                         content: "Your knowledge base holds 88 items across images, PDFs and notes. MARKER_COPY_OK.",
                         citations: [Citation(index: 1, title: "notes.md", path: "/tmp/notes.md",
                                              snippet: "", itemID: "u1")],
-                        model: "deepseek-chat")
+                        model: "deepseek-v4-flash")
         ]
     }
 

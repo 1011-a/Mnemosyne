@@ -27,7 +27,7 @@ final class ReasonerRouterTests: XCTestCase {
     }
 
     func testRationaleReflectsDecision() {
-        XCTAssertTrue(ReasonerRouter.rationale("why is this so?").contains("reasoner"))
-        XCTAssertTrue(ReasonerRouter.rationale("hi there").contains("deepseek-chat"))
+        XCTAssertTrue(ReasonerRouter.rationale("why is this so?").contains("deepseek-v4-pro"))
+        XCTAssertTrue(ReasonerRouter.rationale("hi there").contains("deepseek-v4-flash"))
     }
 }

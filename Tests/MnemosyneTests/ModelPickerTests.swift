@@ -5,8 +5,8 @@ final class ModelPickerTests: XCTestCase {
 
     func testConfigOverridingModelPreservesOtherFields() {
         let base = Config.load()
-        let overridden = base.overriding(model: "deepseek-reasoner")
-        XCTAssertEqual(overridden.deepSeekModel, "deepseek-reasoner")
+        let overridden = base.overriding(model: "deepseek-v4-pro")
+        XCTAssertEqual(overridden.deepSeekModel, "deepseek-v4-pro")
         XCTAssertEqual(overridden.deepSeekKey, base.deepSeekKey)
         XCTAssertEqual(overridden.deepSeekBaseURL, base.deepSeekBaseURL)
         XCTAssertEqual(overridden.ollamaVisionModel, base.ollamaVisionModel)
@@ -45,7 +45,7 @@ final class ModelPickerTests: XCTestCase {
         let config = Config(
             deepSeekKey: "",
             deepSeekBaseURL: URL(string: "https://example.invalid")!,
-            deepSeekModel: "deepseek-chat",
+            deepSeekModel: "deepseek-v4-flash",
             ollamaBaseURL: URL(string: "http://127.0.0.1:11434")!,
             ollamaVisionModel: "gemma3:12b",
             deepSeekKeySource: .missing)
@@ -67,9 +67,9 @@ final class ModelPickerTests: XCTestCase {
 
     func testSettingsModelDefaultAndPersist() {
         let s = SettingsStore(defaults: UserDefaults(suiteName: "Model-\(UUID().uuidString)")!)
-        XCTAssertEqual(s.model, "deepseek-chat")
-        s.model = "deepseek-reasoner"
-        XCTAssertEqual(s.model, "deepseek-reasoner")
+        XCTAssertEqual(s.model, "deepseek-v4-flash")
+        s.model = "deepseek-v4-pro"
+        XCTAssertEqual(s.model, "deepseek-v4-pro")
         XCTAssertTrue(Config.availableModels.contains(s.model))
     }
 
@@ -79,7 +79,7 @@ final class ModelPickerTests: XCTestCase {
                           "set MNEMO_LIVE_DEEPSEEK=1 to run this quota-spending live test")
         let config = Config.load()
         try XCTSkipIf(config.deepSeekKey.isEmpty, "no DeepSeek key")
-        let client = DeepSeekClient(config: config.overriding(model: "deepseek-reasoner"))
+        let client = DeepSeekClient(config: config.overriding(model: "deepseek-v4-pro"))
         let reply: String
         do {
             reply = try await client.complete([ChatMessage(role: .user, content: "Reply with exactly: REASONER_OK")])

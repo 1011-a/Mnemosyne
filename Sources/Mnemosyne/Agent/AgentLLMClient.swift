@@ -11,7 +11,7 @@ import Fathom
 struct AgentLLMClient: Fathom.LLMClient {
     let deepSeek: DeepSeekClient
     var temperature: Double = 0.3
-    /// DeepSeek-native: when `deepseek-reasoner` is the brain, each round also returns a
+    /// DeepSeek-native: when `deepseek-v4-pro` is the brain, each round also returns a
     /// `reasoning_content` chain-of-thought. As of Fathom 1.1.0 the SDK's `Completion` models this
     /// natively (`reasoningContent`); if set, this sink receives it per round so the tool-loop can
     /// surface a "thinking" trace. nil (default) ⇒ reasoning is ignored.

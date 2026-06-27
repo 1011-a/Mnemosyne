@@ -5,8 +5,8 @@ final class JSONModeTests: XCTestCase {
 
     func testBodySetsResponseFormat() {
         let body = JSONMode.body(prior: [["role": "user", "content": "give me json"]],
-                                 model: "deepseek-chat")
-        XCTAssertEqual(body["model"] as? String, "deepseek-chat")
+                                 model: "deepseek-v4-flash")
+        XCTAssertEqual(body["model"] as? String, "deepseek-v4-flash")
         let rf = body["response_format"] as? [String: Any]
         XCTAssertEqual(rf?["type"] as? String, "json_object")
     }

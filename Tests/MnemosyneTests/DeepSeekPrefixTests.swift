@@ -24,14 +24,14 @@ final class DeepSeekPrefixTests: XCTestCase {
 
     func testBodyIncludesStopWhenProvided() {
         let body = DeepSeekPrefix.body(prior: [["role": "user", "content": "x"]],
-                                       prefix: "```json\n", model: "deepseek-chat", stop: ["```"])
-        XCTAssertEqual(body["model"] as? String, "deepseek-chat")
+                                       prefix: "```json\n", model: "deepseek-v4-flash", stop: ["```"])
+        XCTAssertEqual(body["model"] as? String, "deepseek-v4-flash")
         XCTAssertEqual(body["stop"] as? [String], ["```"])
         XCTAssertEqual((body["messages"] as? [[String: Any]])?.count, 2)
     }
 
     func testBodyOmitsStopWhenEmpty() {
-        let body = DeepSeekPrefix.body(prior: [], prefix: "Answer:", model: "deepseek-chat")
+        let body = DeepSeekPrefix.body(prior: [], prefix: "Answer:", model: "deepseek-v4-flash")
         XCTAssertNil(body["stop"])
         // even with no prior messages, the assistant prefix is present.
         XCTAssertEqual((body["messages"] as? [[String: Any]])?.count, 1)

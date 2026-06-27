@@ -86,7 +86,7 @@ final class TagRenameDeleteTests: XCTestCase {
                                store: store, settings: SettingsStore(defaults: UserDefaults(suiteName: "er-\(UUID())")!))
         vm.messages = [
             ChatMessage(role: .user, content: "why?"),
-            ChatMessage(role: .assistant, content: "Because.", model: "deepseek-reasoner",
+            ChatMessage(role: .assistant, content: "Because.", model: "deepseek-v4-pro",
                         reasoning: "step 1, step 2")
         ]
         let md = vm.exportMarkdown()

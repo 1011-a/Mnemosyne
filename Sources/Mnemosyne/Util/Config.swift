@@ -25,7 +25,7 @@ struct Config: Sendable {
     }
 
     /// Known DeepSeek models the user can pick between.
-    static let availableModels = ["deepseek-chat", "deepseek-reasoner"]
+    static let availableModels = ["deepseek-v4-flash", "deepseek-v4-pro"]
 
     /// A copy with the DeepSeek model swapped — lets agents pick a model live.
     func overriding(model: String) -> Config {
@@ -71,7 +71,7 @@ struct Config: Sendable {
         return Config(
             deepSeekKey: key,
             deepSeekBaseURL: URL(string: value(["DEEPSEEK_BASE_URL"]) ?? "https://api.deepseek.com")!,
-            deepSeekModel: value(["DEEPSEEK_MODEL"]) ?? "deepseek-chat",
+            deepSeekModel: value(["DEEPSEEK_MODEL"]) ?? "deepseek-v4-flash",
             ollamaBaseURL: URL(string: value(["OLLAMA_BASE_URL"]) ?? "http://127.0.0.1:11434")!,
             ollamaVisionModel: value(["OLLAMA_VISION_MODEL"]) ?? "gemma3:12b",
             deepSeekKeySource: keySource

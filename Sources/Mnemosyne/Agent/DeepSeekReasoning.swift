@@ -1,7 +1,7 @@
 import Foundation
 
 /// Pulls DeepSeek's native `reasoning_content` out of a chat-completions response body — the
-/// chain-of-thought that `deepseek-reasoner` (R1) emits alongside its answer/tool calls. Fathom's
+/// chain-of-thought that `deepseek-v4-pro` (R1) emits alongside its answer/tool calls. Fathom's
 /// `Completion` only models `content` + `tool_calls`, so this app-side helper recovers the
 /// reasoning that the SDK's `parseCompletion` drops, letting the agent tool-loop surface a live
 /// "thinking" trace. Pure + deterministic → unit-testable.
@@ -16,7 +16,7 @@ enum DeepSeekReasoning {
     }
 
     /// The first choice's `reasoning_content`, trimmed. nil when absent, empty, or the body
-    /// isn't decodable (e.g. deepseek-chat, which has no reasoning field).
+    /// isn't decodable (e.g. deepseek-v4-flash, which has no reasoning field).
     static func extract(from data: Data) -> String? {
         guard let wire = try? JSONDecoder().decode(Wire.self, from: data),
               let raw = wire.choices?.first?.message?.reasoningContent else { return nil }
