@@ -524,8 +524,13 @@ struct ToolAgent: Sendable {
             roundIndex += 1
             // The model call for the ACT loop now flows through the Fathom
             // SDK's LLMClient — one place owns the wire format, and tests inject a mock.
+            // Converging on the SDK: reuse Fathom's context shaper to cap older tool results before
+            // each model call, so a long session can't overflow the window (per-result clampToolResult
+            // bounds each result; this bounds their accumulation). Recent results stay full.
+            let shaped = Fathom.Orchestrator.shapeContext(
+                AgentLLMClient.messages(from: convo), maxToolResultChars: 8_000, keepRecentFull: 4)
             let completion = try await roundClient.complete(
-                messages: AgentLLMClient.messages(from: convo), tools: Self.modelFacingTools())
+                messages: shaped, tools: Self.modelFacingTools())
             guard completion.wantsTools else {
                 finish = .natural
                 break   // model is ready to answer — stop here, discard any draft content
@@ -1090,13 +1095,8 @@ struct ToolAgent: Sendable {
     /// A stable signature for a tool call so identical calls (even with reordered
     /// JSON keys) collapse to the same key — used to de-dup calls within a turn.
     static func callSignature(name: String, args: String) -> String {
-        if let data = args.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data),
-           let norm = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
-           let s = String(data: norm, encoding: .utf8) {
-            return name + ":" + s
-        }
-        return name + ":" + args.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Converging on the SDK: one source of truth for the loop's de-dup signature.
+        Fathom.Orchestrator.callSignature(name: name, arguments: args)
     }
 
     /// Frame several labelled files as numbered sources + citations for a cohesive
