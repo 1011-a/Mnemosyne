@@ -64,5 +64,26 @@ final class AgentSDKLoopTests: XCTestCase {
         // …and the tool actually ran, producing a citation from the stored document.
         XCTAssertTrue(phase.citations.contains { $0.title == "tea.txt" },
                       "search_knowledge executed and cited the real document")
+
+        // Structured trajectory: one step for the executed search_knowledge call, with the env signal.
+        XCTAssertEqual(phase.trace.count, 1, "one tool step recorded")
+        let step = try XCTUnwrap(phase.trace.first)
+        XCTAssertEqual(step.tool, "search_knowledge")
+        XCTAssertFalse(step.repeated)
+        XCTAssertFalse(step.mutated)
+        XCTAssertGreaterThan(step.resultChars, 0)
+        XCTAssertGreaterThan(step.newCitations, 0)
+        XCTAssertEqual(step.round, 1)
+    }
+
+    func testSummarizeTrace() {
+        XCTAssertEqual(ToolAgent.summarizeTrace([]), "(no tools)")
+        let trace = [
+            ToolAgent.ToolStep(round: 1, tool: "search_knowledge", repeated: false, mutated: false, resultChars: 1234, newCitations: 2),
+            ToolAgent.ToolStep(round: 1, tool: "delete_item", repeated: false, mutated: true, resultChars: 40, newCitations: 0),
+            ToolAgent.ToolStep(round: 2, tool: "search_knowledge", repeated: true, mutated: false, resultChars: 1234, newCitations: 0),
+        ]
+        let s = ToolAgent.summarizeTrace(trace)
+        XCTAssertEqual(s, "search_knowledge→1.2k+2cite, delete_item*→40, search_knowledge↺")
     }
 }

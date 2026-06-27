@@ -199,6 +199,20 @@ struct ToolAgent: Sendable {
         let text: String
         let citations: [Citation]
         let searches: Int
+        /// The agent's tool trajectory — one entry per tool call (for observability + eval).
+        var trace: [ToolStep] = []
+    }
+
+    /// One step in the agent's tool trajectory. Structured (vs. status strings) so the run can be
+    /// logged, shown, and evaluated — trace-based eval catches mid-run failures that final-output
+    /// scoring misses (harness research). `resultChars`/`newCitations` are the env signal per step.
+    struct ToolStep: Sendable, Equatable {
+        let round: Int
+        let tool: String
+        let repeated: Bool      // a de-duped repeat call (skipped re-execution)
+        let mutated: Bool       // a knowledge-base mutation
+        let resultChars: Int
+        let newCitations: Int
     }
 
     static let systemPrompt = """
@@ -391,7 +405,20 @@ struct ToolAgent: Sendable {
 
     /// Result of the tool-calling phase: the full conversation (system + history
     /// + tool results), accumulated citations, and how many searches ran.
-    struct ToolPhase { var convo: [[String: Any]]; var citations: [Citation]; var searches: Int; var finish: FinishReason = .natural }
+    struct ToolPhase { var convo: [[String: Any]]; var citations: [Citation]; var searches: Int; var finish: FinishReason = .natural; var trace: [ToolStep] = [] }
+
+    /// One-line, log-friendly summary of a tool trajectory: "search_knowledge→1.2k+2cite, get_item→0.8k, list_tags↺".
+    /// `↺` marks a de-duped repeat, `*` a mutation. Pure → unit-testable.
+    static func summarizeTrace(_ trace: [ToolStep]) -> String {
+        guard !trace.isEmpty else { return "(no tools)" }
+        return trace.map { s in
+            var t = s.tool
+            if s.mutated { t += "*" }
+            if s.repeated { return t + "↺" }
+            let k = s.resultChars >= 1000 ? String(format: "%.1fk", Double(s.resultChars) / 1000) : "\(s.resultChars)"
+            return t + "→" + k + (s.newCitations > 0 ? "+\(s.newCitations)cite" : "")
+        }.joined(separator: ", ")
+    }
 
     /// Run search rounds until the model stops requesting tools (or rounds run
     /// out). Stops BEFORE the model writes its prose answer, so the caller can
@@ -490,7 +517,11 @@ struct ToolAgent: Sendable {
         // Why the tool loop ended — surfaced to the activity trace so the user knows
         // whether the agent finished, gave up on a dead-end, or hit its step budget.
         var finish: FinishReason = .roundLimit
+        // Structured trajectory: one ToolStep per tool call, for observability + eval.
+        var trace: [ToolStep] = []
+        var roundIndex = 0
         for _ in 0..<rounds {
+            roundIndex += 1
             // The model call for the ACT loop now flows through the Fathom
             // SDK's LLMClient — one place owns the wire format, and tests inject a mock.
             let completion = try await roundClient.complete(
@@ -514,10 +545,13 @@ struct ToolAgent: Sendable {
                 if let prior = executed[sig] {
                     convo.append(["role": "tool", "tool_call_id": call.id,
                                   "content": "(Already called \(call.name) with these exact arguments this turn. Its result was:\n\(prior)\nDon't repeat it — use that result, try DIFFERENT arguments or another tool, or answer now.)"])
+                    trace.append(ToolStep(round: roundIndex, tool: call.name, repeated: true,
+                                          mutated: false, resultChars: prior.count, newCitations: 0))
                     continue
                 }
                 freshThisRound += 1
-                if Self.mutationTools.contains(call.name) { didMutate = true; mutatedThisRound = true }
+                let isMutation = Self.mutationTools.contains(call.name)
+                if isMutation { didMutate = true; mutatedThisRound = true }
                 let (rawResult, newCites) = await handleTool(
                     name: call.name, args: call.arguments,
                     fallbackQuery: query, citationOffset: citations.count, onStatus: onStatus)
@@ -529,6 +563,8 @@ struct ToolAgent: Sendable {
                 newCitesThisRound += newCites.count
                 citations.append(contentsOf: newCites)
                 convo.append(["role": "tool", "tool_call_id": call.id, "content": resultText])
+                trace.append(ToolStep(round: roundIndex, tool: call.name, repeated: false,
+                                      mutated: isMutation, resultChars: resultText.count, newCitations: newCites.count))
             }
             if !plan.isEmpty {
                 toolRounds += 1
@@ -593,7 +629,7 @@ struct ToolAgent: Sendable {
         }
 
         onStatus("")
-        return ToolPhase(convo: convo, citations: citations, searches: searches, finish: finish)
+        return ToolPhase(convo: convo, citations: citations, searches: searches, finish: finish, trace: trace)
     }
 
     /// Apply the long-context policy: under budget ⇒ send the whole thread; over ⇒
@@ -1188,7 +1224,7 @@ struct ToolAgent: Sendable {
             body: JSONSerialization.data(withJSONObject: finalBody(phase.convo, stream: false)))
         let resp = try JSONDecoder().decode(ChatResponse.self, from: data)
         let text = Self.stripLeakedToolMarkup(resp.choices.first?.message.content ?? "")
-        return Answer(text: text, citations: phase.citations, searches: phase.searches)
+        return Answer(text: text, citations: phase.citations, searches: phase.searches, trace: phase.trace)
     }
 
     /// Streaming: run tool rounds, surface citations, then stream the final answer
