@@ -1220,6 +1220,7 @@ struct ToolAgent: Sendable {
                 history: [ChatMessage], threadID: String? = nil,
                 onStatus: @Sendable @escaping (String) -> Void = { _ in }) async throws -> Answer {
         let phase = try await runToolRounds(query: query, history: history, threadID: threadID, onStatus: onStatus)
+        AgentDebugLog.write("turn finish=\(phase.finish) searches=\(phase.searches) trace=[\(Self.summarizeTrace(phase.trace))]")
         let data = try await deepSeek.rawChat(
             body: JSONSerialization.data(withJSONObject: finalBody(phase.convo, stream: false)))
         let resp = try JSONDecoder().decode(ChatResponse.self, from: data)
@@ -1246,6 +1247,7 @@ struct ToolAgent: Sendable {
                                                         onPlanStep: onPlanStep)
                     onCitations(phase.citations)
                     onFinishNote(Self.finishTrace(phase.finish))
+                    AgentDebugLog.write("turn finish=\(phase.finish) searches=\(phase.searches) trace=[\(Self.summarizeTrace(phase.trace))]")
                     let body = try JSONSerialization.data(withJSONObject: finalBody(phase.convo, stream: true))
                     // Guard the answer stream: hold back a short trailing buffer so a leaked tool-call
                     // tag split across tokens is caught before it reaches the UI; if a leak appears,
