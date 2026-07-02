@@ -1,5 +1,7 @@
 # Mnemosyne
 
+[![CI](https://github.com/1011-a/Mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/1011-a/Mnemosyne/actions/workflows/ci.yml)
+
 Mnemosyne is a macOS personal-knowledge app. It ingests local files into a searchable knowledge base, keeps embeddings on-device with Apple's Natural Language framework, and uses a configurable agent brain to answer questions with citations. Its agentic tool-calling loop is powered by [Fathom](https://github.com/paean-ai/Fathom), an open-source Swift agent SDK.
 
 ## What It Does
