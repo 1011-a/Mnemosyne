@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/paean-ai/Fathom.git",
       "state" : {
-        "revision" : "164c9499b155032d5ef8b415f55ebebe86488e05",
-        "version" : "1.16.0"
+        "revision" : "74c81c12c0f675eb1ba86ee16eedef605e5f0697",
+        "version" : "1.16.1"
       }
     }
   ],
