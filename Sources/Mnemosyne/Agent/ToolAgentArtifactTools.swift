@@ -87,9 +87,13 @@ extension ToolAgent {
             let builderClient = AgentLLMClient(
                 deepSeek: DeepSeekClient(config: deepSeek.config.overriding(model: "deepseek-v4-pro")),
                 temperature: 0.4)
+            // In-run compaction: 16 rounds of file reads / command output can outgrow the window
+            // mid-build; past ~100k tokens (v4-pro's window is 128k) the orchestrator summarizes
+            // its older steps and keeps building instead of overflowing.
             let orchestrator = Fathom.Orchestrator(
                 client: Self.retrying(builderClient),
-                maxRounds: 16, onStatus: { onStatus($0) }, planning: true)
+                maxRounds: 16, onStatus: { onStatus($0) }, planning: true,
+                compactionThresholdTokens: 100_000)
             func runBuild(_ note: String) async {
                 let query = """
                 Deliverable: \(buildTask)\(note.isEmpty ? "" : "\n\nIMPORTANT — fix this from the last attempt: \(note)")
@@ -165,7 +169,7 @@ extension ToolAgent {
                     : ("No artifact matches '\(ref)'. You've built: \(arts.prefix(8).map(\.title).joined(separator: "; ")).", [])
             }
             onStatus("Opening \(a.title)…")
-            await MainActor.run { NSWorkspace.shared.open(URL(fileURLWithPath: mp)) }
+            _ = await MainActor.run { NSWorkspace.shared.open(URL(fileURLWithPath: mp)) }
             return ("Opened '\(a.title)' (\(a.mainFile ?? "")).", [])
 
         default:
