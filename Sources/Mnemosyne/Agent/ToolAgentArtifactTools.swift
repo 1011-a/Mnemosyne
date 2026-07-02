@@ -92,7 +92,12 @@ extension ToolAgent {
             // its older steps and keeps building instead of overflowing.
             let orchestrator = Fathom.Orchestrator(
                 client: Self.retrying(builderClient),
-                maxRounds: 16, onStatus: { onStatus($0) }, planning: true,
+                maxRounds: 16, onStatus: { onStatus($0) },
+                onObservation: { obs in
+                    // A failed build has no stack trace, only a trajectory — log each step.
+                    AgentDebugLog.write("build tool=\(obs.toolName)\(obs.isRepeat ? " (repeat)" : "") args=\(obs.arguments.prefix(200)) → \(obs.result.prefix(200))")
+                },
+                planning: true,
                 compactionThresholdTokens: 100_000)
             func runBuild(_ note: String) async {
                 let query = """
@@ -101,9 +106,14 @@ extension ToolAgent {
                 CONTEXT from the user's knowledge base (ground in this; do not invent):
                 \(context)
                 """
-                _ = try? await orchestrator.run(systemPrompt: Self.artifactBuilderSystemPrompt,
-                                                query: query,
-                                                tools: sandbox.codingTools(commandTimeout: 180, sandboxed: true))
+                let run = try? await orchestrator.run(systemPrompt: Self.artifactBuilderSystemPrompt,
+                                                      query: query,
+                                                      tools: sandbox.codingTools(commandTimeout: 180, sandboxed: true))
+                if let run {
+                    AgentDebugLog.write("build finished=\(run.finish) toolCalls=\(run.toolCallCount) compactions=\(run.compactions) tokens=\(run.usage.totalTokens)")
+                } else {
+                    AgentDebugLog.write("build FAILED (client error after retries) task=\(buildTask.prefix(120))")
+                }
             }
 
             // End-state verification grounded in the filesystem (not self-grading): build, then if the
