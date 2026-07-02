@@ -53,11 +53,14 @@ struct CustomImageActivityView: View {
         .overlay(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
             .strokeBorder(DS.ColorToken.borderDefault))
         .task(id: imagePath) {
-            // Decode off the main thread, then publish — load once per image.
+            // Read off the main thread, then publish — load once per image. The bytes cross
+            // the actor boundary as Data (Sendable); NSImage itself is not Sendable.
             let path = imagePath
             guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { image = nil; return }
-            let loaded = await Task.detached(priority: .userInitiated) { NSImage(contentsOfFile: path) }.value
-            image = loaded
+            let data = await Task.detached(priority: .userInitiated) {
+                try? Data(contentsOf: URL(fileURLWithPath: path))
+            }.value
+            image = data.flatMap(NSImage.init(data:))
         }
     }
 
